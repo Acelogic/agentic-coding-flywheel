@@ -317,17 +317,16 @@ run_update() {
 
 run_uninstall() {
     print_header
-    echo -e "${BOLD}${RED}Uninstall Flywheel Tools${NC}"
+    echo -e "${BOLD}${RED}Uninstall Agentic Coding Flywheel${NC}"
     echo ""
-
-    local mode="${1:-acfs}"  # acfs (default) or all
-
-    if [[ "$mode" == "all" ]]; then
-        echo -e "${YELLOW}This will remove ALL flywheel tools including prerequisites.${NC}"
-    else
-        echo -e "This will remove ACFS-specific tools (not prerequisites like go, cargo, bun)."
-        echo -e "Use ${CYAN}flywheel uninstall --all${NC} to remove everything."
-    fi
+    echo -e "${YELLOW}This will remove:${NC}"
+    echo "  - All 33 ACFS tools (ntm, br, bv, cass, cm, dcg, etc.)"
+    echo "  - AI agents (claude, codex, gemini)"
+    echo "  - Shell enhancements (zoxide, atuin)"
+    echo "  - Shell config additions"
+    echo "  - Flywheel script itself"
+    echo ""
+    echo -e "${CYAN}Kept:${NC} go, cargo, bun, tmux, git (commonly used by other tools)"
     echo ""
 
     read -p "Continue? [y/N] " -n 1 -r
@@ -343,78 +342,83 @@ run_uninstall() {
             "$HOME/.cargo/bin/$name"
         )
         for p in "${paths[@]}"; do
-            [[ -f "$p" ]] && { rm -f "$p"; echo -e "  ${GREEN}✓${NC} Removed $p"; }
+            [[ -f "$p" || -L "$p" ]] && { rm -f "$p"; echo -e "  ${GREEN}✓${NC} Removed $p"; }
         done
     }
 
-    # ACFS-specific tools (always remove)
+    # ACFS tools
     echo -e "${BOLD}Removing ACFS Tools:${NC}"
 
-    # Homebrew ACFS packages
+    # Homebrew packages
     if [[ "$PKG_MGR" == "brew" ]]; then
-        for pkg in ntm bv cass ubs pt; do
+        for pkg in ntm bv cass ubs pt zoxide atuin fzf jq; do
             brew list "$pkg" &>/dev/null && { brew uninstall "$pkg" 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled $pkg (brew)"; }
         done
-        brew list dicklesworthstone/tap/bv &>/dev/null && brew uninstall dicklesworthstone/tap/bv 2>/dev/null
-        brew list dicklesworthstone/tap/cass &>/dev/null && brew uninstall dicklesworthstone/tap/cass 2>/dev/null
-        brew list dicklesworthstone/tap/ubs &>/dev/null && brew uninstall dicklesworthstone/tap/ubs 2>/dev/null
+        # Tap packages
+        for pkg in dicklesworthstone/tap/bv dicklesworthstone/tap/cass dicklesworthstone/tap/ubs; do
+            brew list "$pkg" &>/dev/null && brew uninstall "$pkg" 2>/dev/null
+        done
     fi
 
-    # Binary tools in ~/.local/bin
-    for tool in br cm dcg ms s2p ru apr caam xf csctf tru rano giil brenner slb pt ntm; do
+    # Binary tools
+    for tool in br cm dcg ms s2p ru apr caam xf csctf tru rano giil brenner slb pt ntm bv cass ubs am; do
         remove_bin "$tool"
     done
 
-    # Go-installed tools
-    remove_bin "slb"
-
-    # npm/bun global packages (AI agents)
+    # npm/bun global packages
     echo ""
     echo -e "${BOLD}Removing AI Agents:${NC}"
     npm list -g @anthropic-ai/claude-code &>/dev/null && { npm uninstall -g @anthropic-ai/claude-code 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled claude"; }
     npm list -g @openai/codex &>/dev/null && { npm uninstall -g @openai/codex 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled codex"; }
     npm list -g @google/gemini-cli &>/dev/null && { npm uninstall -g @google/gemini-cli 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled gemini"; }
 
-    # Prerequisites (only with --all)
-    if [[ "$mode" == "all" ]]; then
-        echo ""
-        echo -e "${BOLD}Removing Prerequisites:${NC}"
-        if [[ "$PKG_MGR" == "brew" ]]; then
-            for pkg in zoxide atuin fzf jq; do
-                brew list "$pkg" &>/dev/null && { brew uninstall "$pkg" 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled $pkg"; }
-            done
-        fi
-        # Note: Not removing go, cargo, bun, tmux as they're commonly used by other tools
-        echo -e "  ${YELLOW}○${NC} Kept: go, cargo, bun, tmux (commonly used by other tools)"
-    fi
+    # MCP Agent Mail
+    echo ""
+    echo -e "${BOLD}Removing MCP Agent Mail:${NC}"
+    pgrep -f "mcp-agent-mail" &>/dev/null && { pkill -f "mcp-agent-mail" 2>/dev/null; echo -e "  ${GREEN}✓${NC} Stopped MCP Agent Mail"; }
+    [[ -d "$HOME/.mcp-agent-mail" ]] && { rm -rf "$HOME/.mcp-agent-mail"; echo -e "  ${GREEN}✓${NC} Removed ~/.mcp-agent-mail"; }
 
-    # Shell integration cleanup
+    # Shell config cleanup
     echo ""
     echo -e "${BOLD}Cleaning shell config:${NC}"
     local rc="$HOME/.zshrc"
     [[ "$SHELL" == */bash ]] && rc="$HOME/.bashrc"
     if [[ -f "$rc" ]]; then
-        # Create backup
         cp "$rc" "$rc.flywheel-backup"
         # Remove flywheel-related lines
-        sed -i.bak '/ntm shell/d' "$rc" 2>/dev/null || sed -i '' '/ntm shell/d' "$rc"
-        echo -e "  ${GREEN}✓${NC} Removed NTM shell integration"
-        echo -e "  ${YELLOW}○${NC} Kept zoxide (useful standalone). Remove manually if needed."
+        sed -i.bak '/ntm shell/d; /zoxide init/d; /# Flywheel/d' "$rc" 2>/dev/null || \
+        sed -i '' '/ntm shell/d; /zoxide init/d; /# Flywheel/d' "$rc"
+        rm -f "$rc.bak"
+        echo -e "  ${GREEN}✓${NC} Removed shell integrations (ntm, zoxide)"
         echo -e "  ${CYAN}Backup saved to $rc.flywheel-backup${NC}"
     fi
 
-    # MCP Agent Mail
+    # Remove flywheel itself
     echo ""
-    echo -e "${BOLD}MCP Agent Mail:${NC}"
-    if pgrep -f "mcp-agent-mail" &>/dev/null; then
-        pkill -f "mcp-agent-mail" 2>/dev/null
-        echo -e "  ${GREEN}✓${NC} Stopped MCP Agent Mail"
+    echo -e "${BOLD}Removing Flywheel:${NC}"
+
+    # Remove symlink
+    [[ -L "$HOME/.local/bin/flywheel" ]] && { rm -f "$HOME/.local/bin/flywheel"; echo -e "  ${GREEN}✓${NC} Removed ~/.local/bin/flywheel symlink"; }
+    [[ -f "$HOME/.local/bin/flywheel" ]] && { rm -f "$HOME/.local/bin/flywheel"; echo -e "  ${GREEN}✓${NC} Removed ~/.local/bin/flywheel"; }
+
+    # Remove source directory (standard location)
+    if [[ -d "$HOME/.local/share/flywheel" ]]; then
+        rm -rf "$HOME/.local/share/flywheel"
+        echo -e "  ${GREEN}✓${NC} Removed ~/.local/share/flywheel"
     fi
-    [[ -d "$HOME/.mcp-agent-mail" ]] && { rm -rf "$HOME/.mcp-agent-mail"; echo -e "  ${GREEN}✓${NC} Removed ~/.mcp-agent-mail"; }
+
+    # Check for other locations
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ "$script_dir" != "$HOME/.local/share/flywheel" && "$script_dir" != "$HOME/.local/bin" ]]; then
+        echo ""
+        echo -e "  ${YELLOW}Note:${NC} Flywheel source at $script_dir was not removed."
+        echo -e "  Remove manually if desired: ${CYAN}rm -rf $script_dir${NC}"
+    fi
 
     echo ""
     echo -e "${GREEN}${BOLD}Uninstall complete!${NC}"
-    echo -e "Run ${CYAN}source $rc${NC} to reload shell config."
+    echo ""
+    echo "Restart your terminal or run: source $rc"
 }
 
 run_init() {
@@ -512,7 +516,7 @@ case "${1:-doctor}" in
     doctor)    run_doctor ;;
     update)    run_update ;;
     missing)   show_missing ;;
-    uninstall) run_uninstall "$2" ;;
+    uninstall) run_uninstall ;;
     version)   echo "flywheel $VERSION" ;;
     help|--help|-h)
         print_header
@@ -524,7 +528,7 @@ case "${1:-doctor}" in
         echo "  doctor     Health check (default)"
         echo "  update     Update all tools"
         echo "  missing    Show install commands"
-        echo "  uninstall  Remove ACFS tools (--all for everything)"
+        echo "  uninstall  Remove everything (tools, agents, flywheel itself)"
         echo "  version    Show version"
         echo ""
         echo "Project workflow:"

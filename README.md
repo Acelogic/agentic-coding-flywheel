@@ -98,7 +98,7 @@ ubs scan .
 | `flywheel init` | Initialize project (br + AGENTS.md) |
 | `flywheel update` | Update all tools |
 | `flywheel missing` | Show manual install commands |
-| `flywheel uninstall` | Remove tools (`--all` for everything) |
+| `flywheel uninstall` | Remove everything (tools + flywheel itself) |
 
 ## What's Included (33 Tools)
 

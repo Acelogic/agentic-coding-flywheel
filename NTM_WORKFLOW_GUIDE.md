@@ -546,8 +546,7 @@ flywheel install           # Install all tools
 flywheel init              # Initialize a new project
 flywheel update            # Update all tools
 flywheel missing           # See what's missing
-flywheel uninstall         # Remove ACFS tools
-flywheel uninstall --all   # Remove everything
+flywheel uninstall         # Remove everything (tools + flywheel)
 ```
 
 ### Without Flywheel Script
