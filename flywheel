@@ -159,14 +159,60 @@ run_doctor() {
     fi
     echo ""
 
+    # Determine shell config file
+    local rc="$HOME/.zshrc"
+    local shell_name="zsh"
+    [[ "$SHELL" == */bash ]] && { rc="$HOME/.bashrc"; shell_name="bash"; }
+
+    echo -e "${BOLD}PATH Configuration:${NC}"
+    local path_issues=0
+    if echo "$PATH" | grep -q "$HOME/.local/bin"; then
+        echo -e "  ${GREEN}✓${NC} ~/.local/bin in PATH"
+    else
+        echo -e "  ${RED}✗${NC} ~/.local/bin not in PATH"
+        path_issues=1
+    fi
+    if echo "$PATH" | grep -q "$HOME/go/bin"; then
+        echo -e "  ${GREEN}✓${NC} ~/go/bin in PATH"
+    else
+        echo -e "  ${YELLOW}○${NC} ~/go/bin not in PATH (needed for: slb)"
+    fi
+    if echo "$PATH" | grep -q "$HOME/.cargo/bin"; then
+        echo -e "  ${GREEN}✓${NC} ~/.cargo/bin in PATH"
+    else
+        echo -e "  ${YELLOW}○${NC} ~/.cargo/bin not in PATH (needed for: rust tools)"
+    fi
+    echo ""
+
     echo -e "${BOLD}Shell Integration:${NC}"
-    grep -q 'ntm shell' ~/.zshrc 2>/dev/null && echo -e "  ${GREEN}✓${NC} NTM" || echo -e "  ${YELLOW}○${NC} NTM (add: eval \"\$(ntm shell zsh)\")"
-    grep -q 'zoxide init' ~/.zshrc 2>/dev/null && echo -e "  ${GREEN}✓${NC} zoxide" || echo -e "  ${YELLOW}○${NC} zoxide (add: eval \"\$(zoxide init zsh)\")"
+    if [[ -f "$rc" ]]; then
+        grep -q 'ntm shell' "$rc" && echo -e "  ${GREEN}✓${NC} NTM shell hooks" || echo -e "  ${YELLOW}○${NC} NTM (add: eval \"\$(ntm shell $shell_name)\")"
+        grep -q 'zoxide init' "$rc" && echo -e "  ${GREEN}✓${NC} zoxide" || echo -e "  ${YELLOW}○${NC} zoxide (add: eval \"\$(zoxide init $shell_name)\")"
+        grep -q 'atuin init' "$rc" && echo -e "  ${GREEN}✓${NC} atuin" || echo -e "  ${YELLOW}○${NC} atuin (add: eval \"\$(atuin init $shell_name)\")"
+    else
+        echo -e "  ${RED}✗${NC} Shell config not found: $rc"
+    fi
+    echo ""
+
+    echo -e "${BOLD}Tool Locations:${NC}"
+    for tool in ntm br bv cass cm dcg claude; do
+        local loc=$(command -v "$tool" 2>/dev/null)
+        if [[ -n "$loc" ]]; then
+            # Check if it's a symlink
+            if [[ -L "$loc" ]]; then
+                local target=$(readlink "$loc" 2>/dev/null || readlink -f "$loc" 2>/dev/null)
+                echo -e "  ${GREEN}✓${NC} $tool → $loc → $target"
+            else
+                echo -e "  ${GREEN}✓${NC} $tool → $loc"
+            fi
+        fi
+    done
     echo ""
 
     local total=$((installed + missing))
     echo -e "${BOLD}Summary:${NC} ${GREEN}$installed${NC}/$total tools installed"
     [[ $missing -gt 0 ]] && echo -e "Run ${CYAN}flywheel install${NC} to install missing tools"
+    [[ $path_issues -gt 0 ]] && echo -e "Run ${CYAN}flywheel install${NC} to fix PATH issues"
     echo ""
 }
 
