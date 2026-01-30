@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
 # Flywheel Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/Acelogic/agentic-coding-flywheel/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Acelogic/agentic-coding-flywheel-setup-simplified/main/install.sh | bash
 #
 
 set -e
 
-REPO="https://github.com/Acelogic/agentic-coding-flywheel"
+REPO="https://github.com/Acelogic/agentic-coding-flywheel-setup-simplified"
 INSTALL_DIR="$HOME/.local/share/flywheel"
 BIN_DIR="$HOME/.local/bin"
 

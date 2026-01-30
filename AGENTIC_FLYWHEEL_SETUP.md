@@ -16,7 +16,7 @@ Cross-platform installer for [Dicklesworthstone's Agentic Coding Flywheel](https
 
 ```bash
 # Install flywheel
-curl -fsSL https://raw.githubusercontent.com/Acelogic/agentic-coding-flywheel/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Acelogic/agentic-coding-flywheel-setup-simplified/main/install.sh | bash
 source ~/.zshrc  # or ~/.bashrc
 
 # Check your setup
@@ -181,7 +181,7 @@ br init
 ### One-Line Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Acelogic/agentic-coding-flywheel/main/install.sh | bash && \
+curl -fsSL https://raw.githubusercontent.com/Acelogic/agentic-coding-flywheel-setup-simplified/main/install.sh | bash && \
   source ~/.zshrc && \
   flywheel install
 ```
