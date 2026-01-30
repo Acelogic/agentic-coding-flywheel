@@ -1,0 +1,538 @@
+#!/usr/bin/env bash
+#
+# flywheel - Cross-platform installer for Dicklesworthstone's Agentic Coding Flywheel
+# Mirrors ACFS functionality for macOS/Linux/WSL (no VPS required)
+# https://agent-flywheel.com/tldr
+#
+# Usage:
+#   ./flywheel install   # Install all tools
+#   ./flywheel doctor    # Health check
+#   ./flywheel update    # Update tools
+#   ./flywheel missing   # Show what's missing
+
+set +e
+VERSION="2.1.0"
+
+# Colors
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+else
+    RED='' GREEN='' YELLOW='' BLUE='' CYAN='' BOLD='' NC=''
+fi
+
+detect_platform() {
+    case "$(uname -s)" in
+        Darwin*)  PLATFORM="macos" ;;
+        Linux*)   [[ -f /proc/version ]] && grep -qi microsoft /proc/version && PLATFORM="wsl" || PLATFORM="linux" ;;
+        *)        PLATFORM="unknown" ;;
+    esac
+    case "$(uname -m)" in
+        x86_64|amd64)  ARCH="amd64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *)             ARCH="unknown" ;;
+    esac
+    # Detect package manager
+    if command -v brew &>/dev/null; then
+        PKG_MGR="brew"
+    elif command -v apt &>/dev/null; then
+        PKG_MGR="apt"
+    elif command -v dnf &>/dev/null; then
+        PKG_MGR="dnf"
+    elif command -v pacman &>/dev/null; then
+        PKG_MGR="pacman"
+    else
+        PKG_MGR="unknown"
+    fi
+}
+
+# Cross-platform package install helper
+pkg_install() {
+    local pkg=$1
+    local apt_pkg=${2:-$1}
+    local dnf_pkg=${3:-$apt_pkg}
+    local pacman_pkg=${4:-$dnf_pkg}
+
+    case "$PKG_MGR" in
+        brew)   brew install "$pkg" 2>/dev/null ;;
+        apt)    sudo apt install -y "$apt_pkg" ;;
+        dnf)    sudo dnf install -y "$dnf_pkg" ;;
+        pacman) sudo pacman -S --noconfirm "$pacman_pkg" ;;
+        *)      echo "Unknown package manager. Install $pkg manually." && return 1 ;;
+    esac
+}
+
+has() {
+    command -v "$1" &>/dev/null && return 0
+    [[ -x "$HOME/go/bin/$1" ]] && return 0
+    [[ -x "$HOME/.local/bin/$1" ]] && return 0
+    [[ -x "$HOME/.cargo/bin/$1" ]] && return 0
+    [[ -x "/opt/homebrew/bin/$1" ]] && return 0
+    return 1
+}
+
+print_header() {
+    echo ""
+    echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}${CYAN}║     AGENTIC CODING FLYWHEEL v$VERSION                          ║${NC}"
+    echo -e "${BOLD}${CYAN}║     https://agent-flywheel.com/tldr                          ║${NC}"
+    echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  Platform: ${BLUE}$PLATFORM${NC} ($ARCH) | Package Manager: ${BLUE}$PKG_MGR${NC}"
+    echo ""
+}
+
+run_doctor() {
+    print_header
+    local installed=0 missing=0
+
+    check() {
+        local name=$1 cmd=$2 cat=$3
+        if has "$cmd"; then
+            echo -e "  ${GREEN}✓${NC} $name"
+            installed=$((installed + 1))
+        else
+            echo -e "  ${RED}✗${NC} $name"
+            missing=$((missing + 1))
+        fi
+    }
+
+    echo -e "${BOLD}Prerequisites:${NC}"
+    check "tmux" "tmux" "prereq"
+    check "fzf" "fzf" "prereq"
+    check "git" "git" "prereq"
+    check "jq" "jq" "prereq"
+    check "go" "go" "prereq"
+    check "bun" "bun" "prereq"
+    check "uv" "uv" "prereq"
+    check "cargo" "cargo" "prereq"
+    echo ""
+
+    echo -e "${BOLD}Shell Enhancements:${NC}"
+    check "zoxide" "zoxide" "shell"
+    check "atuin" "atuin" "shell"
+    echo ""
+
+    echo -e "${BOLD}AI Agents:${NC}"
+    check "claude" "claude" "agents"
+    check "codex" "codex" "agents"
+    check "gemini" "gemini" "agents"
+    echo ""
+
+    echo -e "${BOLD}Core Stack:${NC}"
+    check "ntm" "ntm" "core"
+    check "br" "br" "core"
+    check "bv" "bv" "core"
+    check "cass" "cass" "core"
+    check "cm" "cm" "core"
+    echo ""
+
+    echo -e "${BOLD}Safety Tools:${NC}"
+    check "dcg" "dcg" "safety"
+    check "ubs" "ubs" "safety"
+    check "slb" "slb" "safety"
+    check "pt" "pt" "safety"
+    echo ""
+
+    echo -e "${BOLD}Productivity:${NC}"
+    check "ms" "ms" "productivity"
+    check "s2p" "s2p" "productivity"
+    check "ru" "ru" "productivity"
+    check "apr" "apr" "productivity"
+    check "caam" "caam" "productivity"
+    check "xf" "xf" "productivity"
+    echo ""
+
+    echo -e "${BOLD}Utilities:${NC}"
+    check "csctf" "csctf" "utilities"
+    check "tru" "tru" "utilities"
+    check "rano" "rano" "utilities"
+    check "giil" "giil" "utilities"
+    check "brenner" "brenner" "utilities"
+    echo ""
+
+    echo -e "${BOLD}Services:${NC}"
+    if curl -s http://127.0.0.1:8765/health &>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} MCP Agent Mail (running)"
+    else
+        echo -e "  ${YELLOW}○${NC} MCP Agent Mail (start with: am)"
+    fi
+    echo ""
+
+    echo -e "${BOLD}Shell Integration:${NC}"
+    grep -q 'ntm shell' ~/.zshrc 2>/dev/null && echo -e "  ${GREEN}✓${NC} NTM" || echo -e "  ${YELLOW}○${NC} NTM (add: eval \"\$(ntm shell zsh)\")"
+    grep -q 'zoxide init' ~/.zshrc 2>/dev/null && echo -e "  ${GREEN}✓${NC} zoxide" || echo -e "  ${YELLOW}○${NC} zoxide (add: eval \"\$(zoxide init zsh)\")"
+    echo ""
+
+    local total=$((installed + missing))
+    echo -e "${BOLD}Summary:${NC} ${GREEN}$installed${NC}/$total tools installed"
+    [[ $missing -gt 0 ]] && echo -e "Run ${CYAN}flywheel install${NC} to install missing tools"
+    echo ""
+}
+
+run_install() {
+    print_header
+    echo -e "${BOLD}Installing Agentic Flywheel Tools...${NC}"
+    echo ""
+
+    [[ "$PKG_MGR" == "brew" ]] && brew tap dicklesworthstone/tap 2>/dev/null
+
+    # Prerequisites
+    has tmux || { echo "Installing tmux..."; pkg_install tmux; }
+    has fzf || { echo "Installing fzf..."; pkg_install fzf; }
+    has jq || { echo "Installing jq..."; pkg_install jq; }
+    has go || { echo "Installing go..."; pkg_install go golang-go golang go; }
+    has bun || { echo "Installing bun..."; curl -fsSL https://bun.sh/install | bash; }
+    has uv || { echo "Installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; }
+    has cargo || { echo "Installing rust..."; curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; }
+
+    # Shell
+    has zoxide || { echo "Installing zoxide..."; brew install zoxide 2>/dev/null || curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash; }
+    has atuin || { echo "Installing atuin..."; brew install atuin 2>/dev/null || curl -fsSL https://setup.atuin.sh | bash; }
+
+    # AI Agents
+    has claude || { echo "Installing claude..."; npm install -g @anthropic-ai/claude-code 2>/dev/null || bun install -g @anthropic-ai/claude-code; }
+    has codex || { echo "Installing codex..."; npm install -g @openai/codex 2>/dev/null || bun install -g @openai/codex; }
+    has gemini || { echo "Installing gemini..."; npm install -g @google/gemini-cli 2>/dev/null || bun install -g @google/gemini-cli; }
+
+    # Core Stack
+    has ntm || { echo "Installing ntm..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh" | bash -s -- --easy-mode; }
+    has br || { echo "Installing br..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh" | bash; }
+    has bv || { echo "Installing bv..."; brew install dicklesworthstone/tap/bv 2>/dev/null || curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh" | bash; }
+    has cass || { echo "Installing cass..."; brew install dicklesworthstone/tap/cass 2>/dev/null || curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh" | bash -s -- --easy-mode; }
+    has cm || { echo "Installing cm..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/cass_memory_system/main/install.sh" | bash -s -- --easy-mode; }
+
+    # Safety
+    has dcg || { echo "Installing dcg..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh" | bash -s -- --easy-mode; }
+    has ubs || { echo "Installing ubs..."; brew install dicklesworthstone/tap/ubs 2>/dev/null || curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/master/install.sh" | bash; }
+    has slb || { echo "Installing slb..."; go install github.com/Dicklesworthstone/slb/cmd/slb@latest; }
+    has pt || { echo "Installing pt..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/master/install.sh" | bash; }
+
+    # Productivity
+    has ms || { echo "Installing ms..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/meta_skill/main/scripts/install.sh" | bash; }
+    has s2p || { echo "Installing s2p..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh" | bash; }
+    has ru || { echo "Installing ru..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/repo_updater/main/install.sh" | bash; }
+    has apr || { echo "Installing apr..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/automated_plan_reviser_pro/main/install.sh" | bash; }
+    has caam || { echo "Installing caam..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh" | bash; }
+    has xf || { echo "Installing xf..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh" | bash; }
+
+    # Utilities
+    has csctf || { echo "Installing csctf..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conversation_to_file/main/install.sh" | bash; }
+    has tru || { echo "Installing tru..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/master/install.sh" | bash; }
+    has rano || { echo "Installing rano..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/rano/main/install.sh" | bash; }
+    has giil || { echo "Installing giil..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/giil/main/install.sh" | bash; }
+    has brenner || { echo "Installing brenner..."; curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh" | bash; }
+
+    # MCP Agent Mail
+    curl -s http://127.0.0.1:8765/health &>/dev/null || {
+        echo "Installing MCP Agent Mail..."
+        curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/scripts/install.sh" | bash -s -- --yes --no-start
+    }
+
+    # Shell integration
+    local rc="$HOME/.zshrc"
+    local shell_name="zsh"
+    [[ "$SHELL" == */bash ]] && { rc="$HOME/.bashrc"; shell_name="bash"; }
+    [[ -f "$rc" ]] && {
+        grep -q 'ntm shell' "$rc" || echo "eval \"\$(ntm shell $shell_name)\"" >> "$rc"
+        grep -q 'zoxide init' "$rc" || echo "eval \"\$(zoxide init $shell_name)\"" >> "$rc"
+        grep -q '.local/bin' "$rc" || echo 'export PATH="$PATH:$HOME/.local/bin"' >> "$rc"
+        grep -q 'go/bin' "$rc" || echo 'export PATH="$PATH:$HOME/go/bin"' >> "$rc"
+    }
+
+    echo ""
+    echo -e "${GREEN}Installation complete!${NC} Run: source $rc && flywheel doctor"
+}
+
+show_missing() {
+    print_header
+    echo -e "${BOLD}Missing Tools:${NC}"
+    echo ""
+
+    show() {
+        local name=$1 cmd=$2 install=$3
+        has "$cmd" || { echo -e "${YELLOW}$name:${NC}"; echo -e "  ${CYAN}$install${NC}"; echo ""; }
+    }
+
+    show "tmux" "tmux" "brew install tmux"
+    show "fzf" "fzf" "brew install fzf"
+    show "go" "go" "brew install go"
+    show "bun" "bun" "curl -fsSL https://bun.sh/install | bash"
+    show "uv" "uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"
+    show "cargo" "cargo" "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    show "zoxide" "zoxide" "brew install zoxide"
+    show "atuin" "atuin" "brew install atuin"
+    show "claude" "claude" "npm install -g @anthropic-ai/claude-code"
+    show "codex" "codex" "npm install -g @openai/codex"
+    show "gemini" "gemini" "npm install -g @google/gemini-cli"
+    show "ntm" "ntm" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh | bash -s -- --easy-mode"
+    show "br" "br" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh | bash"
+    show "bv" "bv" "brew install dicklesworthstone/tap/bv"
+    show "cass" "cass" "brew install dicklesworthstone/tap/cass"
+    show "cm" "cm" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/cass_memory_system/main/install.sh | bash"
+    show "dcg" "dcg" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh | bash -s -- --easy-mode"
+    show "ubs" "ubs" "brew install dicklesworthstone/tap/ubs"
+    show "slb" "slb" "go install github.com/Dicklesworthstone/slb/cmd/slb@latest"
+    show "pt" "pt" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/process_triage/master/install.sh | bash"
+    show "ms" "ms" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/meta_skill/main/scripts/install.sh | bash"
+    show "s2p" "s2p" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh | bash"
+    show "ru" "ru" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/repo_updater/main/install.sh | bash"
+    show "apr" "apr" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/automated_plan_reviser_pro/main/install.sh | bash"
+    show "caam" "caam" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh | bash"
+    show "xf" "xf" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh | bash"
+    show "csctf" "csctf" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conversation_to_file/main/install.sh | bash"
+    show "tru" "tru" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/master/install.sh | bash"
+    show "rano" "rano" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/rano/main/install.sh | bash"
+    show "giil" "giil" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/giil/main/install.sh | bash"
+    show "brenner" "brenner" "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh | bash"
+}
+
+run_update() {
+    print_header
+    echo -e "${BOLD}Updating Flywheel Tools...${NC}"
+    echo ""
+
+    [[ "$PKG_MGR" == "brew" ]] && {
+        echo "Updating Homebrew packages..."
+        brew update >/dev/null 2>&1
+        brew upgrade ntm bv cass cm ubs pt xf tru ru caam zoxide atuin 2>/dev/null || true
+    }
+
+    has go && {
+        echo "Updating Go packages..."
+        go install github.com/Dicklesworthstone/slb/cmd/slb@latest 2>/dev/null || true
+    }
+
+    echo "Updating DCG..."
+    curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh" 2>/dev/null | bash -s -- --easy-mode 2>/dev/null || true
+
+    has npm && {
+        echo "Updating npm packages..."
+        npm update -g @anthropic-ai/claude-code 2>/dev/null || true
+    }
+
+    echo ""
+    echo -e "${GREEN}Update complete!${NC}"
+}
+
+run_uninstall() {
+    print_header
+    echo -e "${BOLD}${RED}Uninstall Flywheel Tools${NC}"
+    echo ""
+
+    local mode="${1:-acfs}"  # acfs (default) or all
+
+    if [[ "$mode" == "all" ]]; then
+        echo -e "${YELLOW}This will remove ALL flywheel tools including prerequisites.${NC}"
+    else
+        echo -e "This will remove ACFS-specific tools (not prerequisites like go, cargo, bun)."
+        echo -e "Use ${CYAN}flywheel uninstall --all${NC} to remove everything."
+    fi
+    echo ""
+
+    read -p "Continue? [y/N] " -n 1 -r
+    echo ""
+    [[ ! $REPLY =~ ^[Yy]$ ]] && { echo "Cancelled."; return; }
+    echo ""
+
+    remove_bin() {
+        local name=$1
+        local paths=(
+            "$HOME/.local/bin/$name"
+            "$HOME/go/bin/$name"
+            "$HOME/.cargo/bin/$name"
+        )
+        for p in "${paths[@]}"; do
+            [[ -f "$p" ]] && { rm -f "$p"; echo -e "  ${GREEN}✓${NC} Removed $p"; }
+        done
+    }
+
+    # ACFS-specific tools (always remove)
+    echo -e "${BOLD}Removing ACFS Tools:${NC}"
+
+    # Homebrew ACFS packages
+    if [[ "$PKG_MGR" == "brew" ]]; then
+        for pkg in ntm bv cass ubs pt; do
+            brew list "$pkg" &>/dev/null && { brew uninstall "$pkg" 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled $pkg (brew)"; }
+        done
+        brew list dicklesworthstone/tap/bv &>/dev/null && brew uninstall dicklesworthstone/tap/bv 2>/dev/null
+        brew list dicklesworthstone/tap/cass &>/dev/null && brew uninstall dicklesworthstone/tap/cass 2>/dev/null
+        brew list dicklesworthstone/tap/ubs &>/dev/null && brew uninstall dicklesworthstone/tap/ubs 2>/dev/null
+    fi
+
+    # Binary tools in ~/.local/bin
+    for tool in br cm dcg ms s2p ru apr caam xf csctf tru rano giil brenner slb pt ntm; do
+        remove_bin "$tool"
+    done
+
+    # Go-installed tools
+    remove_bin "slb"
+
+    # npm/bun global packages (AI agents)
+    echo ""
+    echo -e "${BOLD}Removing AI Agents:${NC}"
+    npm list -g @anthropic-ai/claude-code &>/dev/null && { npm uninstall -g @anthropic-ai/claude-code 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled claude"; }
+    npm list -g @openai/codex &>/dev/null && { npm uninstall -g @openai/codex 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled codex"; }
+    npm list -g @google/gemini-cli &>/dev/null && { npm uninstall -g @google/gemini-cli 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled gemini"; }
+
+    # Prerequisites (only with --all)
+    if [[ "$mode" == "all" ]]; then
+        echo ""
+        echo -e "${BOLD}Removing Prerequisites:${NC}"
+        if [[ "$PKG_MGR" == "brew" ]]; then
+            for pkg in zoxide atuin fzf jq; do
+                brew list "$pkg" &>/dev/null && { brew uninstall "$pkg" 2>/dev/null; echo -e "  ${GREEN}✓${NC} Uninstalled $pkg"; }
+            done
+        fi
+        # Note: Not removing go, cargo, bun, tmux as they're commonly used by other tools
+        echo -e "  ${YELLOW}○${NC} Kept: go, cargo, bun, tmux (commonly used by other tools)"
+    fi
+
+    # Shell integration cleanup
+    echo ""
+    echo -e "${BOLD}Cleaning shell config:${NC}"
+    local rc="$HOME/.zshrc"
+    [[ "$SHELL" == */bash ]] && rc="$HOME/.bashrc"
+    if [[ -f "$rc" ]]; then
+        # Create backup
+        cp "$rc" "$rc.flywheel-backup"
+        # Remove flywheel-related lines
+        sed -i.bak '/ntm shell/d' "$rc" 2>/dev/null || sed -i '' '/ntm shell/d' "$rc"
+        echo -e "  ${GREEN}✓${NC} Removed NTM shell integration"
+        echo -e "  ${YELLOW}○${NC} Kept zoxide (useful standalone). Remove manually if needed."
+        echo -e "  ${CYAN}Backup saved to $rc.flywheel-backup${NC}"
+    fi
+
+    # MCP Agent Mail
+    echo ""
+    echo -e "${BOLD}MCP Agent Mail:${NC}"
+    if pgrep -f "mcp-agent-mail" &>/dev/null; then
+        pkill -f "mcp-agent-mail" 2>/dev/null
+        echo -e "  ${GREEN}✓${NC} Stopped MCP Agent Mail"
+    fi
+    [[ -d "$HOME/.mcp-agent-mail" ]] && { rm -rf "$HOME/.mcp-agent-mail"; echo -e "  ${GREEN}✓${NC} Removed ~/.mcp-agent-mail"; }
+
+    echo ""
+    echo -e "${GREEN}${BOLD}Uninstall complete!${NC}"
+    echo -e "Run ${CYAN}source $rc${NC} to reload shell config."
+}
+
+run_init() {
+    local project_name=${1:-$(basename "$PWD")}
+
+    echo -e "${BOLD}${CYAN}Initializing Flywheel Project: $project_name${NC}"
+    echo ""
+
+    # Check if already initialized
+    if [[ -d ".beads" ]]; then
+        echo -e "${YELLOW}Project already initialized (.beads/ exists)${NC}"
+    else
+        # Initialize beads
+        if has br; then
+            echo -e "${CYAN}Initializing task tracking...${NC}"
+            br init
+            echo -e "${GREEN}✓${NC} Task tracking initialized"
+        else
+            echo -e "${RED}✗${NC} br not installed. Run: flywheel install"
+        fi
+    fi
+
+    # Create AGENTS.md if it doesn't exist
+    if [[ -f "AGENTS.md" ]]; then
+        echo -e "${YELLOW}AGENTS.md already exists${NC}"
+    else
+        echo -e "${CYAN}Creating AGENTS.md...${NC}"
+        cat > AGENTS.md << EOF
+# $project_name
+
+## Overview
+<!-- Brief description of what this project does -->
+
+## Tech Stack
+<!-- List your technologies -->
+- Language:
+- Framework:
+- Database:
+
+## Directory Structure
+<!-- Key directories and their purposes -->
+- \`src/\` - Main source code
+- \`tests/\` - Test files
+
+## Conventions
+<!-- Coding standards and patterns to follow -->
+- Follow existing patterns in codebase
+- Write tests for new features
+
+## Getting Started
+\`\`\`bash
+# Install dependencies
+# ...
+
+# Run the project
+# ...
+\`\`\`
+
+## Current Focus
+<!-- What we're actively working on -->
+
+## Notes for AI Agents
+<!-- Special instructions or context for AI assistants -->
+- Check \`br ready\` for available tasks
+- Use \`cm context "task"\` for memory context
+- Run \`ubs scan .\` before committing
+EOF
+        echo -e "${GREEN}✓${NC} Created AGENTS.md"
+    fi
+
+    # Create .claude/settings.local.json for project-specific Claude settings
+    if [[ ! -d ".claude" ]]; then
+        mkdir -p .claude
+        echo -e "${GREEN}✓${NC} Created .claude/ directory"
+    fi
+
+    echo ""
+    echo -e "${GREEN}${BOLD}Project initialized!${NC}"
+    echo ""
+    echo -e "Next steps:"
+    echo -e "  1. Edit ${CYAN}AGENTS.md${NC} with project details"
+    echo -e "  2. Create tasks: ${CYAN}br create \"First task\" --type feature${NC}"
+    echo -e "  3. Spawn agents: ${CYAN}ntm spawn $project_name --cc=2${NC}"
+    echo -e "  4. Get context:  ${CYAN}cm context \"what to work on\" --json${NC}"
+    echo -e "  5. Send to agents: ${CYAN}ntm send $project_name --cc \"Start working\"${NC}"
+    echo ""
+}
+
+# Main
+detect_platform
+
+case "${1:-doctor}" in
+    init)      run_init "$2" ;;
+    install)   run_install ;;
+    doctor)    run_doctor ;;
+    update)    run_update ;;
+    missing)   show_missing ;;
+    uninstall) run_uninstall "$2" ;;
+    version)   echo "flywheel $VERSION" ;;
+    help|--help|-h)
+        print_header
+        echo "Usage: flywheel [command]"
+        echo ""
+        echo "Commands:"
+        echo "  init       Initialize project (br init + AGENTS.md)"
+        echo "  install    Install all 33 ACFS tools"
+        echo "  doctor     Health check (default)"
+        echo "  update     Update all tools"
+        echo "  missing    Show install commands"
+        echo "  uninstall  Remove ACFS tools (--all for everything)"
+        echo "  version    Show version"
+        echo ""
+        echo "Project workflow:"
+        echo "  cd your-project"
+        echo "  flywheel init"
+        echo "  ntm spawn myproject --cc=2"
+        echo ""
+        echo "Tools: https://agent-flywheel.com/tldr"
+        ;;
+    *) echo "Unknown: $1. Run 'flywheel help'" ;;
+esac
