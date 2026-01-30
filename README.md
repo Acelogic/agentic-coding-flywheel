@@ -9,15 +9,13 @@ Cross-platform installer for [Dicklesworthstone's Agentic Coding Flywheel](https
 ### 1. Install Flywheel
 
 ```bash
-# Clone the repo
-git clone https://github.com/Acelogic/agentic-coding-flywheel ~/Developer/flywheel
-
-# Add to PATH (add this to your ~/.zshrc or ~/.bashrc)
-export PATH="$PATH:$HOME/Developer/flywheel"
-
-# Or symlink to a directory already in PATH
-ln -sf ~/Developer/flywheel/flywheel ~/.local/bin/flywheel
+# One-liner: clone and add to PATH
+git clone https://github.com/Acelogic/agentic-coding-flywheel ~/Developer/flywheel && \
+  mkdir -p ~/.local/bin && \
+  ln -sf ~/Developer/flywheel/flywheel ~/.local/bin/flywheel
 ```
+
+> **Note:** If `~/.local/bin` isn't in your PATH, `flywheel install` will add it automatically.
 
 ### 2. Install All Tools
 
