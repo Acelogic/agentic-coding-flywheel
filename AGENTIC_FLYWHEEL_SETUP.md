@@ -16,7 +16,7 @@ Cross-platform installer for [Dicklesworthstone's Agentic Coding Flywheel](https
 
 ```bash
 # Clone the flywheel repo
-git clone https://github.com/YOUR_USERNAME/flywheel ~/Developer/flywheel
+git clone https://github.com/Acelogic/agentic-coding-flywheel ~/Developer/flywheel
 ln -sf ~/Developer/flywheel/flywheel ~/.local/bin/flywheel
 
 # Check your setup
@@ -182,7 +182,7 @@ br init
 
 ```bash
 # Clone and install
-git clone https://github.com/YOUR_USERNAME/flywheel ~/Developer/flywheel
+git clone https://github.com/Acelogic/agentic-coding-flywheel ~/Developer/flywheel
 ln -sf ~/Developer/flywheel/flywheel ~/.local/bin/flywheel
 flywheel install
 ```
