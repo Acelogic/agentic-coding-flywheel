@@ -11,7 +11,7 @@
 #   ./flywheel missing   # Show what's missing
 
 set +e
-VERSION="2.5.4"
+VERSION="2.5.5"
 
 # Colors
 if [[ -t 1 ]]; then
@@ -1367,8 +1367,6 @@ run_clean() {
 
 run_start() {
     local project_name=$(basename "$PWD")
-    local flywheel_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local guide_path="$flywheel_dir/NTM_WORKFLOW_GUIDE.md"
 
     # Run quick health check first (stderr so it doesn't pollute the context output)
     local health_issues=0
@@ -1387,7 +1385,6 @@ run_start() {
     local mail_shm="$mail_dir/storage.sqlite3-shm"
 
     if [[ -n "$mail_dir" ]] && [[ -d "$mail_dir" ]]; then
-        # Check for orphaned files
         if [[ ! -f "$mail_db" ]] && { [[ -f "$mail_wal" ]] || [[ -f "$mail_shm" ]]; }; then
             echo "⚠️  MCP Agent Mail has orphaned database files. Run: flywheel fix" >&2
             health_issues=$((health_issues + 1))
@@ -1401,25 +1398,11 @@ run_start() {
         fi
     fi
 
-    # Check task tracking
     if [[ ! -d ".beads" ]]; then
         echo "⚠️  Task tracking not initialized. Run: br init" >&2
     fi
 
     [[ $health_issues -gt 0 ]] && echo "" >&2
-
-    # Output the full NTM Workflow Guide
-    if [[ -f "$guide_path" ]]; then
-        cat "$guide_path"
-    else
-        echo "ERROR: NTM_WORKFLOW_GUIDE.md not found at $guide_path" >&2
-        echo "Run: flywheel upgrade" >&2
-        return 1
-    fi
-
-    echo ""
-    echo "---"
-    echo ""
 
     # Detect project info
     local tech_stack=""
@@ -1428,8 +1411,6 @@ run_start() {
     [[ -f "go.mod" ]] && tech_stack="Go"
     [[ -f "pyproject.toml" || -f "requirements.txt" ]] && tech_stack="Python"
     [[ -f "Gemfile" ]] && tech_stack="Ruby"
-
-    # Check for frameworks
     [[ -f "package.json" ]] && {
         grep -q '"next"' package.json 2>/dev/null && tech_stack="Next.js"
         grep -q '"react"' package.json 2>/dev/null && [[ "$tech_stack" != "Next.js" ]] && tech_stack="React"
@@ -1445,7 +1426,429 @@ run_start() {
     has gemini && available_agents="${available_agents}Gemini (--gmi), "
     available_agents="${available_agents%, }"
 
-    # Project-specific context
+    # Output the full guide (self-contained)
+    cat << 'NTM_GUIDE'
+# NTM Agentic Workflow Guide
+
+A practical guide for leveraging the Dicklesworthstone multi-agent workflow to maximize development velocity.
+
+**Part of the Agentic Coding Flywheel:** https://agent-flywheel.com/
+
+---
+
+## The Admin/Worker Model
+
+⚠️ **Critical Concept:** There are two types of agents in this workflow:
+
+### Admin Agent (Orchestrator)
+- Runs `flywheel` commands
+- Creates tasks with `br`
+- Spawns workers with `ntm spawn`
+- Assigns work with `ntm send`
+- Monitors progress
+- Reviews results
+- **Does NOT write code directly**
+
+### Worker Agents (Implementers)
+- Spawned by the admin via `ntm spawn`
+- Receive instructions via `ntm send`
+- Do the actual coding work
+- Use MCP Agent Mail for file coordination
+- Update task status with `br update`
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      ADMIN AGENT                            │
+│      (flywheel start, br create, ntm spawn/send)            │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+    ┌─────────┐    ┌─────────┐    ┌─────────┐
+    │ Worker  │    │ Worker  │    │ Worker  │
+    │ (codes) │    │ (codes) │    │ (codes) │
+    └─────────┘    └─────────┘    └─────────┘
+```
+
+**Why this matters:**
+- Admin maintains high-level oversight
+- Workers can run in parallel without stepping on each other
+- MCP Agent Mail handles file locking between workers
+- Clear separation of orchestration vs implementation
+
+---
+
+## Philosophy
+
+1. **Parallel Execution** - Multiple worker agents implement different parts simultaneously
+2. **Specialization** - Each agent type has strengths; use them strategically
+3. **Coordination** - Workers coordinate through MCP Agent Mail, admin coordinates through NTM
+
+```
+Traditional: You → Agent → Result → You → Agent → Result → ...
+
+NTM Style:   Admin → [Worker₁, Worker₂, Worker₃] → [Result₁, Result₂, Result₃] → Merged Result
+```
+
+---
+
+## Agent Characteristics
+
+| Agent | Best For | Personality |
+|-------|----------|-------------|
+| **Claude Code** | Complex reasoning, architecture, refactoring, debugging | Thorough, considers edge cases |
+| **Codex CLI** | Quick implementations, scripts, boilerplate | Fast, direct, code-focused |
+| **Gemini CLI** | Research, documentation, alternative perspectives | Broad knowledge, good at summarization |
+
+### Recommended Configurations
+
+```bash
+# Exploratory work
+ntm spawn explore --cc=2 --gmi=1
+
+# Implementation sprint
+ntm spawn impl --cc=1 --cod=2
+
+# Complex refactoring
+ntm spawn refactor --cc=3
+
+# Documentation & testing
+ntm spawn docs --cc=1 --gmi=1 --cod=1
+```
+
+---
+
+## Core Workflows
+
+### Workflow 0: Admin Agent Setup (Start Here)
+
+```bash
+# 1. Get admin context
+flywheel start
+
+# 2. ASK the user what agents they want
+# "Which AI agents? (Claude, Codex, Gemini) How many?"
+
+# 3. Check/create tasks
+br ready
+br create "Task description" --type feature
+
+# 4. Spawn workers (use --no-user since admin is separate)
+ntm spawn myproject --cc=2 --no-user
+
+# 5. Assign work (DO NOT code yourself!)
+ntm send myproject --pane=0 "Read ARCHITECTURE.md, run br ready, claim a task, implement it"
+ntm send myproject --pane=1 "Read ARCHITECTURE.md, run br ready, claim a task, implement it"
+
+# 6. Monitor
+ntm status myproject
+br list
+
+# 7. Review when workers finish
+git diff
+ubs scan .
+```
+
+**Remember:**
+- Ask user which agents and how many before spawning
+- Use `--no-user` since you (admin) are in a separate session
+- You orchestrate, workers implement
+
+---
+
+### Workflow 1: Parallel Exploration
+
+```bash
+ntm spawn explore --cc=2 --gmi=1
+ntm send explore --cc "Explore approach A for implementing user auth using JWT"
+ntm send explore --gmi "Research best practices for user auth in 2026"
+ntm copy explore --all
+ntm dashboard explore
+```
+
+### Workflow 2: Divide and Conquer
+
+```bash
+br create "Implement API endpoints" --type feature
+br create "Write frontend components" --type feature
+br create "Add database migrations" --type feature
+ntm spawn impl --cc=3
+ntm send impl --pane=1 "Work on API endpoints. Check br ready."
+ntm send impl --pane=2 "Build frontend components. Check br ready."
+ntm send impl --pane=3 "Create database migrations. Check br ready."
+```
+
+### Workflow 3: Review Chain
+
+```bash
+ntm spawn review --cc=2
+ntm send review --pane=1 "Implement the login flow"
+# Wait, then:
+ntm send review --pane=2 "Review changes in git diff. Look for bugs."
+ntm send review --pane=1 "Address the review feedback"
+```
+
+### Workflow 4: Research → Implement
+
+```bash
+ntm spawn research --gmi=1 --cc=1
+ntm send research --gmi "Research rate limiting approaches"
+ntm copy research --gmi
+ntm send research --cc "Implement based on this research: [paste output]"
+```
+
+---
+
+## Session Management
+
+```bash
+# Naming
+ntm spawn auth-feature --cc=2
+ntm spawn bugfix-login --cc=1
+
+# Listing
+ntm list
+ntm list -v
+
+# Attaching
+ntm attach myproject --pane=1
+ntm dashboard myproject
+
+# Cleanup
+ntm kill myproject
+ntm kill --all
+```
+
+---
+
+## Communication Patterns
+
+```bash
+# Broadcasting
+ntm send proj --cc "Update: the API schema changed"
+ntm send proj --all "Stop current work"
+
+# Targeted
+ntm send proj --pane=1 "Focus on backend"
+ntm send proj --pane=2 "Focus on frontend"
+
+# Context Injection
+CONTEXT=$(cm context "implementing auth" --json)
+ntm send proj --all "Context: $CONTEXT"
+```
+
+---
+
+## Integration with Other Tools
+
+### With CASS Memory (cm)
+
+```bash
+cm context "your task description" --json
+# Returns: relevantBullets, antiPatterns, historySnippets
+```
+
+### With Beads (br/bv)
+
+```bash
+br init
+br create "Implement user registration" --type feature --priority 1
+br ready
+bv  # Opens TUI
+```
+
+### With MCP Agent Mail (Critical for Multi-Agent)
+
+**Admin should ensure the server is running:**
+```bash
+flywheel doctor
+flywheel fix
+```
+
+---
+
+#### Worker Registration (REQUIRED)
+
+**Every worker MUST register at session start.** Include these instructions when sending tasks:
+
+```markdown
+## MCP Agent Mail Setup (Do this FIRST!)
+
+1. **Ensure project exists:**
+   Call: mcp__mcp-agent-mail__ensure_project
+   Parameters:
+     - human_key: "/absolute/path/to/project"
+
+2. **Register yourself:**
+   Call: mcp__mcp-agent-mail__register_agent
+   Parameters:
+     - project_key: "/absolute/path/to/project"
+     - program: "claude-code" | "codex-cli" | "gemini-cli"
+     - model: "<your model name>"
+     - task_description: "<what you're working on>"
+
+3. **Before editing shared files, reserve them:**
+   Call: mcp__mcp-agent-mail__macro_file_reservation_cycle
+   Parameters:
+     - project_key, agent_name, paths: ["src/file1.ts"]
+
+4. **Check inbox periodically:**
+   Call: mcp__mcp-agent-mail__fetch_inbox
+
+5. **CRITICAL - Auto-loop after completing tasks:**
+   After finishing ANY task, DO NOT go idle. Instead:
+   - Run `br ready` to check for more available tasks
+   - If tasks exist, claim one with `br claim <ID>` and continue working
+   - If no tasks, report completion to admin and ASK for more work
+   - NEVER just sit at an empty prompt waiting
+```
+
+---
+
+#### Key MCP Tools for Workers
+
+| Tool | Purpose |
+|------|---------|
+| `ensure_project` | Initialize project in Agent Mail |
+| `register_agent` | Register worker identity |
+| `fetch_inbox` | Check for messages |
+| `send_message` | Send message to workers |
+| `macro_file_reservation_cycle` | Reserve files before editing |
+| `release_file_reservations` | Release files when done |
+
+---
+
+#### Worker Coordination Pattern
+
+```
+┌─────────────┐                    ┌─────────────┐
+│  Worker 1   │                    │  Worker 2   │
+│ "BlueLake"  │                    │ "GreenCastle"│
+└──────┬──────┘                    └──────┬──────┘
+       │                                  │
+       │ 1. reserve("src/auth.ts")        │
+       ├──────────────────────────────────│
+       │ 2. edit auth.ts                  │ wants auth.ts
+       │                                  ├─→ sees reservation
+       │ 3. release("src/auth.ts")        │   works on other file
+       ├──────────────────────────────────│
+       │                                  │ 4. reserve + edit
+```
+
+---
+
+## Safety Layer Integration
+
+### DCG (Destructive Command Guard)
+Auto-blocks: `rm -rf`, `git reset --hard`, `DROP TABLE`, `chmod 777`
+
+### SLB (Simultaneous Launch Button)
+```bash
+slb wrap "terraform destroy" --reason "Cleanup"
+slb approve <operation-id>
+```
+
+### UBS (Ultimate Bug Scanner)
+```bash
+ubs scan .
+ubs scan src/auth/*.ts --json
+```
+
+---
+
+## Tips & Best Practices
+
+### Do's
+1. Start with context - `cm context` before complex tasks
+2. Use tasks - `br` tasks before spawning agents
+3. Name sessions well - `auth-feature` not `test1`
+4. Review outputs - `ntm copy` to gather work
+5. Kill idle sessions
+6. **Include auto-loop instructions** - Tell workers to check `br ready` after each task
+7. **Use tmux for idle workers** - `tmux send-keys -t SESSION:0.N "msg" Enter`
+
+### Don'ts
+1. Don't over-parallelize - 2-3 agents optimal
+2. Don't micromanage
+3. Don't ignore conflicts - use MCP Agent Mail
+4. Don't forget to commit
+5. **Don't let workers go idle** - include loop instructions
+
+---
+
+## Quick Reference Card
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    NTM QUICK REFERENCE                      │
+├─────────────────────────────────────────────────────────────┤
+│ SPAWN                                                       │
+│   ntm spawn NAME --cc=N --cod=N --gmi=N                     │
+│                                                             │
+│ SEND                                                        │
+│   ntm send NAME --cc "prompt"       # All Claude            │
+│   ntm send NAME --pane=1 "prompt"   # First Claude          │
+│   ntm send NAME --all "prompt"      # All agents            │
+│                                                             │
+│ MANAGE                                                      │
+│   ntm list                          # List sessions         │
+│   ntm dashboard NAME                # Open TUI              │
+│   ntm copy NAME --all               # Copy outputs          │
+│   ntm kill NAME                     # End session           │
+│                                                             │
+│ INTEGRATE                                                   │
+│   cm context "task" --json          # Memory context        │
+│   br ready                          # Available tasks       │
+│   cass search "query"               # Past sessions         │
+│                                                             │
+│ SAFETY                                                      │
+│   ubs scan .                        # Scan for bugs         │
+│   slb wrap "cmd"                    # Two-person approval   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Agents not responding | Check `ntm dashboard` |
+| **Worker idle after task** | `tmux send-keys -t SESSION:0.PANE "msg" Enter` |
+| **ntm send not executing** | Worker at empty prompt; use tmux with Enter |
+| File conflicts | Ensure MCP Agent Mail running: `flywheel fix` |
+| Lost context | Re-inject with `cm context` |
+| Session died | `tmux list-sessions` |
+
+### Idle Worker Problem (Common Issue)
+
+**Symptom:** Worker completes task, sits at empty prompt, ignores `ntm send`.
+
+**Cause:** `ntm send` puts text in buffer but doesn't press Enter.
+
+**Solutions:**
+1. `tmux send-keys -t proj:0.0 "Check br ready" Enter`
+2. Include in initial instructions: "After completing, run 'br ready' and claim next task. Do NOT go idle."
+3. Monitor with `ntm status proj`, nudge idle workers
+
+---
+
+## Management Commands
+
+```bash
+flywheel doctor     # Health check
+flywheel install    # Install all tools
+flywheel init       # Initialize project
+flywheel update     # Update tools
+flywheel fix        # Fix issues
+```
+
+NTM_GUIDE
+
+    # Now output project-specific context
+    echo ""
+    echo "---"
+    echo ""
     echo "# Current Session Context"
     echo ""
     echo "## Project: $project_name"
@@ -1469,18 +1872,16 @@ run_start() {
         echo ""
     fi
 
-    # Show AGENTS.md if exists
     if [[ -f "AGENTS.md" ]]; then
         echo "## Project Instructions (from AGENTS.md)"
         echo ""
         echo '```markdown'
         head -50 AGENTS.md
-        [[ $(wc -l < AGENTS.md) -gt 50 ]] && echo "... (truncated, see full AGENTS.md)"
+        [[ $(wc -l < AGENTS.md) -gt 50 ]] && echo "... (truncated)"
         echo '```'
         echo ""
     fi
 
-    # Show current tasks
     if [[ -d ".beads" ]] && has br; then
         local ready_tasks=$(br ready 2>/dev/null)
         local task_count=$(br list 2>/dev/null | wc -l | tr -d ' ')
@@ -1501,7 +1902,7 @@ run_start() {
     else
         echo "## No Task Tracking"
         echo ""
-        echo "Run \`br init\` or \`flywheel init\` to enable task tracking."
+        echo "Run \`br init\` or \`flywheel init\` to enable."
         echo ""
     fi
 }
