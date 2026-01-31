@@ -159,9 +159,9 @@ br create "Add database migrations" --type feature
 ntm spawn impl --cc=3
 
 # 3. Assign each Claude to a subtask
-ntm send impl --cc:0 "Work on API endpoints. Check br ready for context."
-ntm send impl --cc:1 "Build frontend components. Check br ready for context."
-ntm send impl --cc:2 "Create database migrations. Check br ready for context."
+ntm send impl --pane=1 "Work on API endpoints. Check br ready for context."
+ntm send impl --pane=2 "Build frontend components. Check br ready for context."
+ntm send impl --pane=3 "Create database migrations. Check br ready for context."
 
 # 4. Monitor progress
 ntm dashboard impl
@@ -176,13 +176,13 @@ One agent implements, another reviews.
 ntm spawn review --cc=2
 
 # 2. First Claude implements
-ntm send review --cc:0 "Implement the login flow with proper error handling"
+ntm send review --pane=1 "Implement the login flow with proper error handling"
 
 # 3. Wait for completion, then have second Claude review
-ntm send review --cc:1 "Review the changes made by the other agent. Look for bugs, security issues, and improvements. The changes are in git diff."
+ntm send review --pane=2 "Review the changes made by the other agent. Look for bugs, security issues, and improvements. The changes are in git diff."
 
 # 4. First Claude addresses feedback
-ntm send review --cc:0 "Address the review feedback"
+ntm send review --pane=1 "Address the review feedback"
 ```
 
 ### Workflow 4: Research → Implement
@@ -232,7 +232,7 @@ ntm list -v
 
 ```bash
 # Attach to specific pane
-ntm attach myproject --cc:0
+ntm attach myproject --pane=1
 
 # Open dashboard
 ntm dashboard myproject
@@ -270,10 +270,10 @@ Send to specific agent instances:
 
 ```bash
 # First Claude only
-ntm send proj --cc:0 "Focus on the backend"
+ntm send proj --pane=1 "Focus on the backend"
 
 # Second Claude only
-ntm send proj --cc:1 "Focus on the frontend"
+ntm send proj --pane=2 "Focus on the frontend"
 ```
 
 ### Context Injection
@@ -464,8 +464,8 @@ ntm spawn auth --cc=2 --gmi=1
 ntm send auth --gmi "Research OAuth 2.0 best practices for web apps in 2026. Compare Auth0, Clerk, and custom implementation."
 
 # 6. Meanwhile, Claude explores the codebase
-ntm send auth --cc:0 "Explore how authentication currently works in this codebase. Check for existing patterns."
-ntm send auth --cc:1 "Check br ready and claim the OAuth research task."
+ntm send auth --pane=1 "Explore how authentication currently works in this codebase. Check for existing patterns."
+ntm send auth --pane=2 "Check br ready and claim the OAuth research task."
 
 # 7. Monitor and coordinate
 ntm dashboard auth
@@ -481,14 +481,14 @@ cass search "memory leak production" --limit 5
 ntm spawn debug --cc=2
 
 # 3. Parallel investigation
-ntm send debug --cc:0 "Investigate the memory leak. Start with heap snapshots and profiling."
-ntm send debug --cc:1 "Review recent commits for potential causes. Check git log --since='1 week ago'"
+ntm send debug --pane=1 "Investigate the memory leak. Start with heap snapshots and profiling."
+ntm send debug --pane=2 "Review recent commits for potential causes. Check git log --since='1 week ago'"
 
 # 4. Share findings
 ntm copy debug --all
 # Review outputs, then synthesize
 
-ntm send debug --cc:0 "Based on both investigations, implement a fix for the identified issue."
+ntm send debug --pane=1 "Based on both investigations, implement a fix for the identified issue."
 ```
 
 ### Scenario 3: Large Refactoring
@@ -504,9 +504,9 @@ br create "Refactor: Update documentation" --type refactor
 ntm spawn refactor --cc=3
 
 # 3. Assign domains
-ntm send refactor --cc:0 "Claim and work on extracting the service layer. Use br update to claim."
-ntm send refactor --cc:1 "Wait for service layer extraction, then update API routes."
-ntm send refactor --cc:2 "After routes are updated, migrate and update tests."
+ntm send refactor --pane=1 "Claim and work on extracting the service layer. Use br update to claim."
+ntm send refactor --pane=2 "Wait for service layer extraction, then update API routes."
+ntm send refactor --pane=3 "After routes are updated, migrate and update tests."
 
 # 4. Use MCP Agent Mail for file reservations to prevent conflicts
 # Agents will auto-coordinate through the mail server
@@ -573,7 +573,7 @@ ntm send proj --cc "Work on this..." --detach
 │                                                             │
 │ SEND                                                        │
 │   ntm send NAME --cc "prompt"      # All Claude             │
-│   ntm send NAME --cc:0 "prompt"    # First Claude           │
+│   ntm send NAME --pane=1 "prompt"    # First Claude           │
 │   ntm send NAME --all "prompt"     # All agents             │
 │                                                             │
 │ MANAGE                                                      │
