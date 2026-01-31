@@ -328,7 +328,7 @@ run_doctor() {
     local ntm_config=$(ntm config show 2>/dev/null)
 
     # Expected models (recommended defaults)
-    local expected_claude="claude-opus-4-20250514"
+    local expected_claude="claude-opus-4-5-20251101"
     local expected_codex="gpt-5.2-codex"
     local expected_gemini="gemini-3-pro-preview"
 
@@ -958,7 +958,7 @@ run_fix() {
     local ntm_fixed=0
 
     # Expected models
-    local expected_claude="claude-opus-4-20250514"
+    local expected_claude="claude-opus-4-5-20251101"
     local expected_codex="gpt-5.2-codex"
     local expected_gemini="gemini-3-pro-preview"
 
