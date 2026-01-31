@@ -322,6 +322,54 @@ run_doctor() {
     ver=$(cass --version 2>/dev/null | head -1) && echo -e "  cass: ${CYAN}$ver${NC}" || true
     echo ""
 
+    echo -e "${BOLD}NTM Model Defaults:${NC}"
+    # Check if ntm config has correct model defaults
+    local ntm_config_ok=true
+    local ntm_config=$(ntm config show 2>/dev/null)
+
+    # Expected models (recommended defaults)
+    local expected_claude="claude-opus-4-20250514"
+    local expected_codex="gpt-5.2-codex"
+    local expected_gemini="gemini-3-pro-preview"
+
+    echo -e "  ${CYAN}Recommended:${NC} Claude Opus 4.5 | Codex GPT 5.2 | Gemini 3 Pro"
+    echo ""
+
+    # Check each model default
+    local current_claude=$(echo "$ntm_config" | grep 'default_claude' | head -1 | sed 's/.*= *"\([^"]*\)".*/\1/')
+    local current_codex=$(echo "$ntm_config" | grep 'default_codex' | head -1 | sed 's/.*= *"\([^"]*\)".*/\1/')
+    local current_gemini=$(echo "$ntm_config" | grep 'default_gemini' | head -1 | sed 's/.*= *"\([^"]*\)".*/\1/')
+
+    if [[ "$current_claude" == "$expected_claude" ]]; then
+        echo -e "  ${GREEN}✓${NC} Claude: ${BOLD}$current_claude${NC}"
+    else
+        echo -e "  ${YELLOW}○${NC} Claude: $current_claude"
+        echo -e "         ${CYAN}recommended: $expected_claude${NC}"
+        ntm_config_ok=false
+    fi
+
+    if [[ "$current_codex" == "$expected_codex" ]]; then
+        echo -e "  ${GREEN}✓${NC} Codex:  ${BOLD}$current_codex${NC}"
+    else
+        echo -e "  ${YELLOW}○${NC} Codex:  $current_codex"
+        echo -e "         ${CYAN}recommended: $expected_codex${NC}"
+        ntm_config_ok=false
+    fi
+
+    if [[ "$current_gemini" == "$expected_gemini" ]]; then
+        echo -e "  ${GREEN}✓${NC} Gemini: ${BOLD}$current_gemini${NC}"
+    else
+        echo -e "  ${YELLOW}○${NC} Gemini: $current_gemini"
+        echo -e "         ${CYAN}recommended: $expected_gemini${NC}"
+        ntm_config_ok=false
+    fi
+
+    if [[ "$ntm_config_ok" == false ]]; then
+        echo ""
+        echo -e "      Run ${CYAN}flywheel fix${NC} to update model defaults"
+    fi
+    echo ""
+
     echo -e "${BOLD}Auth Status:${NC}"
     # Check Claude auth
     if [[ -f "$HOME/.claude/.credentials.json" ]] || [[ -f "$HOME/.config/claude/credentials.json" ]]; then
@@ -903,6 +951,89 @@ run_fix() {
     fix_mail_server
     local mail_fixes=$?
     fixed=$((fixed + mail_fixes))
+
+    # === NTM Model Config fixes ===
+    echo -e "${BOLD}NTM Model Configuration:${NC}"
+    local ntm_config_path="$HOME/.config/ntm/config.toml"
+    local ntm_fixed=0
+
+    # Expected models
+    local expected_claude="claude-opus-4-20250514"
+    local expected_codex="gpt-5.2-codex"
+    local expected_gemini="gemini-3-pro-preview"
+
+    if [[ -f "$ntm_config_path" ]]; then
+        local ntm_config=$(cat "$ntm_config_path")
+
+        # Check current values
+        local current_claude=$(echo "$ntm_config" | grep 'default_claude' | head -1 | sed 's/.*= *"\([^"]*\)".*/\1/')
+        local current_codex=$(echo "$ntm_config" | grep 'default_codex' | head -1 | sed 's/.*= *"\([^"]*\)".*/\1/')
+        local current_gemini=$(echo "$ntm_config" | grep 'default_gemini' | head -1 | sed 's/.*= *"\([^"]*\)".*/\1/')
+
+        local needs_fix=false
+        [[ "$current_claude" != "$expected_claude" ]] && needs_fix=true
+        [[ "$current_codex" != "$expected_codex" ]] && needs_fix=true
+        [[ "$current_gemini" != "$expected_gemini" ]] && needs_fix=true
+
+        if [[ "$needs_fix" == true ]]; then
+            echo -e "  ${YELLOW}Current models need updating:${NC}"
+            [[ "$current_claude" != "$expected_claude" ]] && echo -e "    Claude: $current_claude → $expected_claude"
+            [[ "$current_codex" != "$expected_codex" ]] && echo -e "    Codex: $current_codex → $expected_codex"
+            [[ "$current_gemini" != "$expected_gemini" ]] && echo -e "    Gemini: $current_gemini → $expected_gemini"
+            echo ""
+            read -p "  Update NTM model defaults? [Y/n] " -n 1 -r
+            echo ""
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                # Update each model default using sed
+                if [[ "$current_claude" != "$expected_claude" ]]; then
+                    sed -i.bak "s/default_claude = \"[^\"]*\"/default_claude = \"$expected_claude\"/" "$ntm_config_path"
+                    echo -e "  ${GREEN}✓${NC} Updated Claude to $expected_claude"
+                    ntm_fixed=$((ntm_fixed + 1))
+                fi
+                if [[ "$current_codex" != "$expected_codex" ]]; then
+                    sed -i.bak "s/default_codex = \"[^\"]*\"/default_codex = \"$expected_codex\"/" "$ntm_config_path"
+                    echo -e "  ${GREEN}✓${NC} Updated Codex to $expected_codex"
+                    ntm_fixed=$((ntm_fixed + 1))
+                fi
+                if [[ "$current_gemini" != "$expected_gemini" ]]; then
+                    sed -i.bak "s/default_gemini = \"[^\"]*\"/default_gemini = \"$expected_gemini\"/" "$ntm_config_path"
+                    echo -e "  ${GREEN}✓${NC} Updated Gemini to $expected_gemini"
+                    ntm_fixed=$((ntm_fixed + 1))
+                fi
+
+                # Also update gemini model aliases if needed
+                if ! grep -q "pro = \"gemini-3-pro-preview\"" "$ntm_config_path" 2>/dev/null; then
+                    sed -i.bak "s/pro = \"gemini-pro\"/pro = \"gemini-3-pro-preview\"/" "$ntm_config_path"
+                fi
+                if ! grep -q "flash = \"gemini-3-flash-preview\"" "$ntm_config_path" 2>/dev/null; then
+                    sed -i.bak "s/flash = \"gemini-2.0-flash\"/flash = \"gemini-3-flash-preview\"/" "$ntm_config_path"
+                fi
+
+                # Add gpt52 alias if missing
+                if ! grep -q "gpt52" "$ntm_config_path" 2>/dev/null; then
+                    sed -i.bak "/\[models.codex\]/a\\
+gpt52 = \"gpt-5.2-codex\"" "$ntm_config_path"
+                fi
+
+                # Disable auto_select_pro_model since we set gemini model directly
+                if grep -q "auto_select_pro_model = true" "$ntm_config_path" 2>/dev/null; then
+                    sed -i.bak "s/auto_select_pro_model = true/auto_select_pro_model = false/" "$ntm_config_path"
+                    echo -e "  ${GREEN}✓${NC} Disabled Gemini auto_select_pro_model (now set via default)"
+                fi
+
+                rm -f "$ntm_config_path.bak"
+            else
+                echo -e "  ${YELLOW}○${NC} Skipped NTM config update"
+            fi
+        else
+            echo -e "  ${GREEN}✓${NC} All model defaults are correct"
+        fi
+    else
+        echo -e "  ${YELLOW}○${NC} NTM config not found at $ntm_config_path"
+        echo -e "      Run ${CYAN}ntm config show > ~/.config/ntm/config.toml${NC} to create it"
+    fi
+    fixed=$((fixed + ntm_fixed))
+    echo ""
 
     # === Summary ===
     echo -e "${BOLD}Summary:${NC}"
