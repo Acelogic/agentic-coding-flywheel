@@ -4,7 +4,7 @@ A practical guide for leveraging the Dicklesworthstone multi-agent workflow to m
 
 **Part of the Agentic Coding Flywheel:** https://agent-flywheel.com/
 
-> This guide works with or without the `flywheel` script. The script automates installation, but all tools can be installed manually. See `AGENTIC_FLYWHEEL_SETUP.md` for both approaches.
+> This guide works with or without the `flywheel` script. The script automates installation, but all tools can be installed manually via `flywheel missing`.
 
 ---
 
@@ -593,4 +593,4 @@ Brief description of the project.
 
 ---
 
-*This workflow guide accompanies the Agentic Flywheel Setup. See AGENTIC_FLYWHEEL_SETUP.md for installation instructions.*
+*This workflow guide accompanies the Agentic Flywheel Setup. See README.md for installation instructions.*

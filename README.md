@@ -1,6 +1,6 @@
 # Agentic Coding Flywheel Setup - Simplified
 
-![Version](https://img.shields.io/badge/Version-2.2.0-bd93f9?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.3.0-bd93f9?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Platform-macOS%20|%20Linux%20|%20WSL-6272a4?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-50fa7b?style=for-the-badge)
 ![Shell](https://img.shields.io/badge/Shell-Bash-ff79c6?style=for-the-badge)
@@ -152,6 +152,7 @@ The original [ACFS](https://github.com/Dicklesworthstone/agentic_coding_flywheel
 |---------|-------------|
 | `flywheel new NAME` | Create new project directory + git init + flywheel init |
 | `flywheel init` | Initialize current directory (br + AGENTS.md + .claude/) |
+| `flywheel start` | Output workflow context for AI agent (default if initialized) |
 | `flywheel spawn NAME [N]` | Spawn N Claude agents (default: 2) |
 
 ### Info
@@ -188,6 +189,25 @@ The original [ACFS](https://github.com/Dicklesworthstone/agentic_coding_flywheel
 ✓ Project status (.beads/, AGENTS.md)
 ○ Tool freshness (flags tools >30 days old)
 ```
+
+---
+
+## Agent Context Injection
+
+In initialized projects, `flywheel` (no args) outputs workflow context for AI agent injection. This teaches the agent how to use the flywheel tools for your specific project.
+
+**Usage:** Tell any AI agent:
+```
+Run flywheel and proceed with the implementation plan
+```
+
+The agent receives:
+- **Key commands** - `br`, `cm`, `cass`, `ubs`, `ntm` quick reference
+- **Workflow patterns** - How to start work, commit safely, coordinate
+- **Project context** - Detected tech stack, AGENTS.md content
+- **Current tasks** - Output of `br ready`
+
+This lets agents understand the flywheel ecosystem without manual explanation.
 
 ---
 
@@ -252,7 +272,6 @@ flywheel clean                    # Kill stale sessions
 
 | File | Description |
 |------|-------------|
-| [`AGENTIC_FLYWHEEL_SETUP.md`](AGENTIC_FLYWHEEL_SETUP.md) | Complete installation guide (with/without flywheel) |
 | [`NTM_WORKFLOW_GUIDE.md`](NTM_WORKFLOW_GUIDE.md) | Multi-agent workflow patterns & real-world scenarios |
 
 ---

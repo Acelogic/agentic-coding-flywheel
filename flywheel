@@ -11,7 +11,7 @@
 #   ./flywheel missing   # Show what's missing
 
 set +e
-VERSION="2.2.0"
+VERSION="2.3.0"
 
 # Colors
 if [[ -t 1 ]]; then
@@ -895,6 +895,168 @@ run_clean() {
     echo -e "${GREEN}Cleanup complete!${NC}"
 }
 
+run_start() {
+    local project_name=$(basename "$PWD")
+    local flywheel_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local guide_path="$flywheel_dir/NTM_WORKFLOW_GUIDE.md"
+
+    # Detect project info
+    local tech_stack=""
+    [[ -f "package.json" ]] && tech_stack="Node.js/JavaScript"
+    [[ -f "Cargo.toml" ]] && tech_stack="Rust"
+    [[ -f "go.mod" ]] && tech_stack="Go"
+    [[ -f "pyproject.toml" || -f "requirements.txt" ]] && tech_stack="Python"
+    [[ -f "Gemfile" ]] && tech_stack="Ruby"
+
+    # Check for frameworks
+    [[ -f "package.json" ]] && {
+        grep -q '"next"' package.json 2>/dev/null && tech_stack="Next.js"
+        grep -q '"react"' package.json 2>/dev/null && [[ "$tech_stack" != "Next.js" ]] && tech_stack="React"
+        grep -q '"vue"' package.json 2>/dev/null && tech_stack="Vue.js"
+        grep -q '"svelte"' package.json 2>/dev/null && tech_stack="Svelte"
+        grep -q '"express"' package.json 2>/dev/null && tech_stack="${tech_stack:+$tech_stack + }Express"
+    }
+
+    # Output context for agent injection
+    cat << 'WORKFLOW_HEADER'
+# Agentic Coding Flywheel - Project Context
+
+You are now working within the **Agentic Coding Flywheel** workflow. This context gives you the tools and patterns to work effectively.
+
+---
+
+## Quick Reference - Key Commands
+
+```bash
+# Task Management (br = beads_rust)
+br ready                    # See tasks you can work on
+br list                     # List all tasks
+br create "desc" --type T   # Create task (T: feature|bug|task|refactor)
+br update ID --status S     # Update status (S: todo|in_progress|done)
+
+# Memory & Context (cm = cass_memory)
+cm context "what you're doing" --json   # Get relevant memory/patterns
+
+# Session Search (cass)
+cass search "query"         # Find past solutions
+
+# Safety
+ubs scan .                  # Scan for bugs before committing
+dcg                         # Auto-blocks dangerous commands (always active)
+
+# Multi-Agent (ntm)
+ntm spawn NAME --cc=N       # Spawn N Claude agents
+ntm send NAME --cc "msg"    # Send to all Claude agents
+ntm dashboard NAME          # Monitor agents
+
+# MCP Agent Mail (coordination)
+am                          # Start mail server (if not running)
+# Agents auto-discover MCP tools for file reservations & messaging
+```
+
+---
+
+## Workflow Patterns
+
+### Pattern 1: Starting Work
+```bash
+br ready                              # Check available tasks
+cm context "task description" --json  # Get memory context
+# Then start implementing
+```
+
+### Pattern 2: Before Committing
+```bash
+ubs scan .                  # Check for bugs
+git diff                    # Review changes
+# Commit if clean
+```
+
+### Pattern 3: Parallel Agents (when needed)
+```bash
+ntm spawn project --cc=2    # Spawn 2 Claude agents
+ntm send project --cc:0 "Work on backend"
+ntm send project --cc:1 "Work on frontend"
+ntm dashboard project       # Monitor
+```
+
+### Pattern 4: File Coordination (multi-agent)
+When multiple agents work on the same codebase, use MCP Agent Mail to prevent conflicts:
+- Reserve files before editing with `file_reservation_paths`
+- Release when done with `release_file_reservations`
+- Check inbox for messages from other agents
+
+---
+
+WORKFLOW_HEADER
+
+    # Project-specific context
+    echo "## Current Project: $project_name"
+    echo ""
+
+    if [[ -n "$tech_stack" ]]; then
+        echo "**Tech Stack:** $tech_stack"
+        echo ""
+    fi
+
+    # Show AGENTS.md if exists
+    if [[ -f "AGENTS.md" ]]; then
+        echo "### Project Instructions (from AGENTS.md)"
+        echo ""
+        echo '```markdown'
+        head -50 AGENTS.md
+        [[ $(wc -l < AGENTS.md) -gt 50 ]] && echo "... (truncated, see full AGENTS.md)"
+        echo '```'
+        echo ""
+    fi
+
+    # Show current tasks
+    if [[ -d ".beads" ]] && has br; then
+        local ready_tasks=$(br ready 2>/dev/null)
+        local task_count=$(br list 2>/dev/null | wc -l | tr -d ' ')
+
+        if [[ -n "$ready_tasks" ]]; then
+            echo "### Ready Tasks"
+            echo ""
+            echo '```'
+            echo "$ready_tasks" | head -10
+            echo '```'
+            echo ""
+        fi
+
+        if [[ "$task_count" -gt 0 ]]; then
+            echo "**Total tasks:** $task_count"
+            echo ""
+        fi
+    else
+        echo "### No Task Tracking"
+        echo ""
+        echo "Run \`br init\` or \`flywheel init\` to enable task tracking."
+        echo ""
+    fi
+
+    # Instructions for the agent
+    cat << 'WORKFLOW_FOOTER'
+---
+
+## Your Next Steps
+
+1. **Check tasks:** Run `br ready` to see what needs work
+2. **Get context:** Run `cm context "your task" --json` for relevant memory
+3. **Implement:** Make changes following project conventions
+4. **Verify:** Run `ubs scan .` before committing
+5. **Update task:** Run `br update ID --status done` when complete
+
+**Important:**
+- Always check `br ready` before starting new work
+- Use `cm context` to leverage past solutions
+- Run `ubs scan` before any commit
+- Update task status as you progress
+
+You're ready to proceed. What would you like to work on?
+WORKFLOW_FOOTER
+}
+
 run_env() {
     print_header
     echo -e "${BOLD}Environment Info:${NC}"
@@ -945,7 +1107,11 @@ run_env() {
 # Main
 detect_platform
 
-case "${1:-doctor}" in
+# Smart default: start if project initialized, doctor otherwise
+default_cmd="doctor"
+[[ -d ".beads" || -f "AGENTS.md" ]] && default_cmd="start"
+
+case "${1:-$default_cmd}" in
     init)      run_init "$2" ;;
     install)   run_install ;;
     doctor)    run_doctor ;;
@@ -961,6 +1127,7 @@ case "${1:-doctor}" in
     logs)      run_logs ;;
     clean)     run_clean ;;
     env)       run_env ;;
+    start)     run_start ;;
     version)   echo "flywheel $VERSION" ;;
     help|--help|-h)
         print_header
@@ -968,7 +1135,7 @@ case "${1:-doctor}" in
         echo ""
         echo -e "${BOLD}${BLUE}━━━ Setup ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "  ${GREEN}install${NC}      Install all 33 ACFS tools"
-        echo -e "  ${GREEN}doctor${NC}       Health check: tools, PATH, auth, versions ${YELLOW}(default)${NC}"
+        echo -e "  ${GREEN}doctor${NC}       Health check: tools, PATH, auth, versions"
         echo -e "  ${GREEN}fix${NC}          Auto-fix PATH and shell integration issues"
         echo -e "  ${GREEN}update${NC}       Update all installed tools"
         echo -e "  ${GREEN}upgrade${NC}      Update flywheel itself (git pull)"
@@ -977,6 +1144,7 @@ case "${1:-doctor}" in
         echo -e "${BOLD}${BLUE}━━━ Projects ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "  ${GREEN}new${NC} ${CYAN}<name>${NC}    Create new project: mkdir + git init + flywheel init"
         echo -e "  ${GREEN}init${NC}         Initialize current dir: .beads/ + AGENTS.md + .claude/"
+        echo -e "  ${GREEN}start${NC}        Output workflow context for AI agent ${YELLOW}(default if initialized)${NC}"
         echo -e "  ${GREEN}spawn${NC} ${CYAN}<name>${NC} ${YELLOW}[n]${NC}  Spawn n Claude agents (default: 2)"
         echo ""
         echo -e "${BOLD}${BLUE}━━━ Info ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -998,9 +1166,12 @@ case "${1:-doctor}" in
         echo -e "${BOLD}${BLUE}━━━ New Project ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "  ${CYAN}flywheel new my-app${NC}        # Create project"
         echo -e "  ${CYAN}cd my-app${NC}"
-        echo -e "  ${CYAN}flywheel spawn my-app${NC}      # Start 2 Claude agents"
+        echo -e "  ${CYAN}flywheel start${NC}             # Inject workflow context into agent"
         echo -e "  ${CYAN}br create \"Task\" --type feature${NC}"
-        echo -e "  ${CYAN}ntm dashboard my-app${NC}       # Monitor agents"
+        echo ""
+        echo -e "${BOLD}${BLUE}━━━ Agent Workflow ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "  Tell an agent: ${YELLOW}\"run flywheel and proceed with the plan\"${NC}"
+        echo -e "  In initialized projects, \`flywheel\` = \`flywheel start\`"
         echo ""
         echo -e "${BOLD}Links:${NC}"
         echo -e "  Tools:  ${CYAN}https://agent-flywheel.com/tldr${NC}"
