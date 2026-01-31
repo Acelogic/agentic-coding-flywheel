@@ -11,7 +11,7 @@
 #   ./flywheel missing   # Show what's missing
 
 set +e
-VERSION="2.4.0"
+VERSION="2.5.0"
 
 # Colors
 if [[ -t 1 ]]; then
@@ -214,7 +214,36 @@ run_doctor() {
             echo -e "      Fix with: ${CYAN}flywheel fix${NC}"
             ;;
     esac
-    echo ""
+
+    # Check Mail Server Web GUI endpoints (only if server is running)
+    if [[ "$mail_status" == "healthy" ]]; then
+        echo -e "${BOLD}Mail Server Web GUI:${NC}"
+        local mail_gui_ok=0 mail_gui_fail=0
+
+        check_mail_endpoint() {
+            local name=$1 path=$2
+            local url="http://localhost:8765${path}"
+            if curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null | grep -qE "^(200|302)$"; then
+                echo -e "  ${GREEN}✓${NC} $name"
+                mail_gui_ok=$((mail_gui_ok + 1))
+            else
+                echo -e "  ${RED}✗${NC} $name (not responding)"
+                mail_gui_fail=$((mail_gui_fail + 1))
+            fi
+        }
+
+        check_mail_endpoint "API Docs" "/docs"
+        check_mail_endpoint "Unified Inbox" "/mail/unified-inbox"
+        check_mail_endpoint "Projects List" "/mail/projects"
+        check_mail_endpoint "Archive Browser" "/mail/archive/browser"
+        check_mail_endpoint "Network View" "/mail/archive/network"
+        check_mail_endpoint "Activity Feed" "/mail/archive/activity"
+
+        if [[ $mail_gui_fail -gt 0 ]]; then
+            echo -e "      ${YELLOW}Tip:${NC} Open ${CYAN}http://localhost:8765/docs${NC} in browser"
+        fi
+        echo ""
+    fi
 
     # Determine shell config file
     local rc="$HOME/.zshrc"
