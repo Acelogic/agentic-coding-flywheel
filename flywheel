@@ -11,7 +11,7 @@
 #   ./flywheel missing   # Show what's missing
 
 set +e
-VERSION="2.5.2"
+VERSION="2.5.3"
 
 # Colors
 if [[ -t 1 ]]; then
