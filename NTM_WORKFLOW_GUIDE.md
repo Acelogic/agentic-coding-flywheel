@@ -338,36 +338,96 @@ bv  # Opens TUI
 
 ### With MCP Agent Mail (Critical for Multi-Agent)
 
-MCP Agent Mail is essential for worker coordination. It prevents file conflicts when multiple workers edit the same codebase.
+MCP Agent Mail is essential for worker coordination. It prevents file conflicts when multiple workers edit the same codebase. **All three agent CLIs support MCP Agent Mail:**
+- Claude Code: Built-in MCP support
+- Codex CLI: Configure in `~/.codex/config.toml`
+- Gemini CLI: Configure in `~/.gemini/settings.json`
 
-**The admin agent should ensure it's running:**
+**Admin should ensure the server is running:**
 ```bash
 flywheel doctor                   # Shows MCP Agent Mail status
 flywheel fix                      # Fixes issues including starting the server
 ```
 
-**Workers automatically use MCP Agent Mail for:**
-- **File reservations** - Lock files before editing, prevent conflicts
-- **Messaging** - Send updates to other workers
-- **Handoffs** - Coordinate sequential work
+---
 
-**Key MCP tools workers use:**
-```
-file_reservation_paths     # Reserve files before editing
-release_file_reservations  # Release when done
-send_message              # Notify other agents
-fetch_inbox               # Check for messages
+#### Worker Registration (REQUIRED)
+
+**Every worker MUST register at session start.** Include these instructions when sending tasks to workers:
+
+```markdown
+## MCP Agent Mail Setup (Do this FIRST!)
+
+1. **Ensure project exists:**
+   Call: mcp__mcp-agent-mail__ensure_project
+   Parameters:
+     - human_key: "/absolute/path/to/project"
+
+2. **Register yourself:**
+   Call: mcp__mcp-agent-mail__register_agent
+   Parameters:
+     - project_key: "/absolute/path/to/project"
+     - program: "claude-code" | "codex-cli" | "gemini-cli"
+     - model: "<your model name>"
+     - task_description: "<what you're working on>"
+   (Your name will be auto-generated, e.g., "BlueLake", "GreenCastle")
+
+3. **Before editing shared files, reserve them:**
+   Call: mcp__mcp-agent-mail__macro_file_reservation_cycle
+   Parameters:
+     - project_key: "/absolute/path/to/project"
+     - agent_name: "<your assigned name>"
+     - paths: ["src/file1.ts", "src/file2.ts"]
+
+4. **Check inbox periodically:**
+   Call: mcp__mcp-agent-mail__fetch_inbox
+   Parameters:
+     - project_key: "/absolute/path/to/project"
+     - agent_name: "<your assigned name>"
 ```
 
-**Worker coordination pattern:**
+---
+
+#### Key MCP Tools for Workers
+
+| Tool | Purpose |
+|------|---------|
+| `ensure_project` | Initialize project in Agent Mail (idempotent) |
+| `register_agent` | Register worker identity (call at session start) |
+| `fetch_inbox` | Check for messages from other workers |
+| `send_message` | Send message to other workers |
+| `macro_file_reservation_cycle` | Reserve files before editing |
+| `release_file_reservations` | Release files when done |
+| `file_reservation_paths` | Check which files are reserved |
+
+---
+
+#### Worker Coordination Pattern
+
 ```
-Worker 1: "I'm editing src/auth.ts" → reserves file
-Worker 2: "I need auth.ts" → sees reservation, waits or works on something else
-Worker 1: "Done with auth.ts" → releases file
-Worker 2: "auth.ts available" → can now edit
+┌─────────────┐                    ┌─────────────┐
+│  Worker 1   │                    │  Worker 2   │
+│ "BlueLake"  │                    │ "GreenCastle"│
+└──────┬──────┘                    └──────┬──────┘
+       │                                  │
+       │ 1. reserve("src/auth.ts")        │
+       ├──────────────────────────────────│
+       │                                  │
+       │ 2. edit auth.ts                  │ wants auth.ts
+       │                                  ├─→ sees reservation
+       │                                  │   works on other file
+       │ 3. release("src/auth.ts")        │
+       ├──────────────────────────────────│
+       │                                  │
+       │                                  │ 4. reserve("src/auth.ts")
+       │                                  ├──────────────────────
+       │                                  │ 5. edit auth.ts
 ```
 
-This happens automatically through the MCP tools. Workers just need to use the reservation tools before editing shared files.
+**Send this pattern to workers:**
+```bash
+ntm send PROJECT --pane=1 "Before editing any file, use mcp__mcp-agent-mail__macro_file_reservation_cycle to reserve it. Check mcp__mcp-agent-mail__fetch_inbox periodically for coordination messages."
+```
 
 ### With CASS (Session Search)
 

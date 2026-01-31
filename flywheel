@@ -795,6 +795,31 @@ run_init() {
 - Check \`br ready\` for available tasks
 - Use \`cm context "task"\` for memory context
 - Run \`ubs scan .\` before committing
+
+## MCP Agent Mail (Worker Coordination)
+
+**All workers MUST register with Agent Mail at the start of each session:**
+
+\`\`\`
+1. Call: mcp__mcp-agent-mail__ensure_project
+   - project_key: "<absolute path to project directory>"
+
+2. Call: mcp__mcp-agent-mail__register_agent
+   - project_key: "<same path>"
+   - program: "claude-code" | "codex-cli" | "gemini-cli"
+   - model: "<your model name>"
+   - task_description: "<what you're working on>"
+   - (name will be auto-generated as adjective+noun, e.g., "BlueLake")
+
+3. Before editing shared files, reserve them:
+   - Call: mcp__mcp-agent-mail__macro_file_reservation_cycle
+   - This prevents conflicts with other workers
+
+4. Check inbox periodically for coordination messages:
+   - Call: mcp__mcp-agent-mail__fetch_inbox
+\`\`\`
+
+Workers coordinate via Agent Mail to prevent file conflicts during parallel work.
 EOF
         echo -e "${GREEN}✓${NC} Created AGENTS.md"
     fi
@@ -1478,6 +1503,25 @@ cm context "task" --json    # Get relevant memory/patterns
 
 # Coordination
 # Workers auto-discover MCP Agent Mail for file reservations
+```
+
+---
+
+## Worker Instructions (Include in ntm send)
+
+When assigning tasks to workers, include these MCP Agent Mail instructions:
+
+```markdown
+**IMPORTANT: Register with Agent Mail first!**
+
+1. Ensure project: mcp__mcp-agent-mail__ensure_project with project_key="<PROJECT_PATH>"
+2. Register yourself: mcp__mcp-agent-mail__register_agent with:
+   - project_key: "<PROJECT_PATH>"
+   - program: "claude-code" or "codex-cli" or "gemini-cli"
+   - model: "<your model>"
+   - task_description: "<your task>"
+3. Before editing files, check/reserve them via file_reservation tools
+4. Check inbox periodically: mcp__mcp-agent-mail__fetch_inbox
 ```
 
 ---
