@@ -384,6 +384,13 @@ flywheel fix                      # Fixes issues including starting the server
    Parameters:
      - project_key: "/absolute/path/to/project"
      - agent_name: "<your assigned name>"
+
+5. **CRITICAL - Auto-loop after completing tasks:**
+   After finishing ANY task, DO NOT go idle. Instead:
+   - Run `br ready` to check for more available tasks
+   - If tasks exist, claim one with `br claim <ID>` and continue working
+   - If no tasks, report completion to admin and ASK for more work
+   - NEVER just sit at an empty prompt waiting
 ```
 
 ---
@@ -608,6 +615,8 @@ ntm send docs --cc "Based on the documentation outline, write the Getting Starte
 3. **Name sessions well** - Use descriptive names like `auth-feature` not `test1`
 4. **Review outputs** - Use `ntm copy` to gather and compare agent work
 5. **Kill idle sessions** - Don't leave agents running unnecessarily
+6. **Include auto-loop instructions** - Tell workers to check `br ready` after each task
+7. **Use tmux for idle workers** - `tmux send-keys -t SESSION:0.N "msg" Enter` for follow-ups
 
 ### Don'ts
 
@@ -615,6 +624,7 @@ ntm send docs --cc "Based on the documentation outline, write the Getting Starte
 2. **Don't micromanage** - Let agents work; check results periodically
 3. **Don't ignore conflicts** - Use MCP Agent Mail for file coordination
 4. **Don't forget to commit** - Agents make changes; commit good work
+5. **Don't let workers go idle** - Always include loop instructions in initial task
 
 ### Performance Tips
 
@@ -674,10 +684,40 @@ ntm send proj --cc "Work on this..." --detach
 | Issue | Solution |
 |-------|----------|
 | Agents not responding | Check `ntm dashboard` for errors |
+| **Worker idle after task** | Use `tmux send-keys -t SESSION:0.PANE "instructions" Enter` to nudge |
+| **ntm send not executing** | Worker finished task and is at empty prompt; use tmux directly with Enter |
 | File conflicts | Ensure MCP Agent Mail is running: `am` |
 | Lost context | Re-inject with `cm context` |
 | Session died | Check `tmux list-sessions` directly |
 | Too slow | Reduce agent count or check system resources |
+
+### Idle Worker Problem (Common Issue)
+
+**Symptom:** Worker completes a task and sits at empty prompt, ignoring `ntm send` commands.
+
+**Cause:** When workers finish a task and return to idle state, `ntm send` puts text in the input buffer but doesn't auto-execute (no Enter key sent).
+
+**Solutions:**
+
+1. **For follow-up tasks to idle workers:**
+   ```bash
+   # Use tmux directly with explicit Enter
+   tmux send-keys -t ClawdBlox:0.0 "Check br ready and claim next task" Enter
+   ```
+
+2. **Prevent idling in initial instructions:**
+   ```bash
+   ntm send proj --pane=1 "...your task... IMPORTANT: After completing, run 'br ready' and claim the next available task. Do NOT go idle."
+   ```
+
+3. **Monitor and nudge periodically:**
+   ```bash
+   # Check for idle workers
+   ntm status proj
+
+   # Nudge any that show idle
+   tmux send-keys -t proj:0.0 "Run br ready now" Enter
+   ```
 
 ---
 
