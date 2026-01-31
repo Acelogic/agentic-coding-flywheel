@@ -43,7 +43,7 @@ Shows installed tools, PATH config, shell integrations, auth status, and more.
 flywheel fix
 ```
 
-Auto-adds missing PATH entries and shell integrations to your rc file.
+Auto-fixes PATH, shell integrations, and MCP Agent Mail issues.
 
 ### 3. Create a New Project
 
@@ -59,21 +59,82 @@ cd existing-project
 flywheel init
 ```
 
-### 4. Spawn AI Agents
+### 4. Start Flywheel (Admin Agent Mode)
 
 ```bash
-flywheel spawn my-project      # Spawns 2 Claude agents
-# or with more agents:
-flywheel spawn my-project 3    # Spawns 3 Claude agents
+flywheel start    # Or just `flywheel` in an initialized project
 ```
 
-### 5. Start Working
+This outputs context for the **admin agent** - the orchestrator that manages work.
+
+### 5. Spawn Worker Agents
+
+The admin agent spawns workers to do the actual coding:
+
+```bash
+ntm spawn my-project --cc=2    # Spawn 2 Claude worker agents
+```
+
+### 6. Assign Work to Workers
 
 ```bash
 br create "Build user auth" --type feature
-ntm send my-project --cc "Check br ready and start working on the auth task"
-ntm dashboard my-project       # Monitor progress
+ntm send my-project --pane=1 "Check br ready and implement the auth task"
+ntm send my-project --pane=2 "Check br ready and implement the next task"
 ```
+
+### 7. Monitor Progress
+
+```bash
+ntm status my-project          # Check worker status
+br list                        # See task progress
+```
+
+---
+
+## The Admin/Worker Model
+
+**Key concept:** The agent running `flywheel` commands is the **admin agent**. It should NOT write code directly.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      ADMIN AGENT                            │
+│  (runs flywheel, creates tasks, spawns workers, monitors)   │
+└────────────────────────┬────────────────────────────────────┘
+                         │ ntm spawn/send
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+    ┌─────────┐    ┌─────────┐    ┌─────────┐
+    │ Worker  │    │ Worker  │    │ Worker  │
+    │   #1    │    │   #2    │    │   #3    │
+    └─────────┘    └─────────┘    └─────────┘
+         │               │               │
+         └───────────────┴───────────────┘
+                    Actual coding work
+                  (coordinated via MCP Agent Mail)
+```
+
+**Why?**
+- Parallel execution across multiple workers
+- File coordination via MCP Agent Mail prevents conflicts
+- Admin maintains oversight and can redirect workers
+- Clear separation of orchestration vs implementation
+
+### MCP Agent Mail (Worker Coordination)
+
+When multiple workers edit the same codebase, MCP Agent Mail prevents conflicts:
+
+```bash
+flywheel doctor    # Shows if MCP Agent Mail is running
+flywheel fix       # Fixes issues and starts the server if needed
+```
+
+Workers automatically use MCP tools to:
+- **Reserve files** before editing (prevents simultaneous edits)
+- **Release files** when done (lets other workers proceed)
+- **Send messages** to coordinate handoffs
+
+This coordination is automatic - workers just use the MCP reservation tools.
 
 ---
 
@@ -141,7 +202,7 @@ The original [ACFS](https://github.com/Dicklesworthstone/agentic_coding_flywheel
 |---------|-------------|
 | `flywheel install` | Install all 33 tools |
 | `flywheel doctor` | Health check (tools, PATH, auth, versions, sessions) |
-| `flywheel fix` | Auto-fix PATH and shell integration issues |
+| `flywheel fix` | Auto-fix all issues (PATH, shell, MCP Agent Mail) |
 | `flywheel update` | Update all installed tools |
 | `flywheel upgrade` | Update flywheel itself (git pull) |
 | `flywheel uninstall` | Remove everything |
@@ -194,45 +255,57 @@ The original [ACFS](https://github.com/Dicklesworthstone/agentic_coding_flywheel
 
 ## Agent Context Injection
 
-In initialized projects, `flywheel` (no args) outputs workflow context for AI agent injection. This teaches the agent how to use the flywheel tools for your specific project.
+In initialized projects, `flywheel` (no args) outputs **admin agent context**. This configures the agent as an orchestrator that spawns workers.
 
 **Usage:** Tell any AI agent:
 ```
-Run flywheel and proceed with the implementation plan
+Run flywheel start and spawn workers to implement the plan
 ```
 
-The agent receives:
-- **Key commands** - `br`, `cm`, `cass`, `ubs`, `ntm` quick reference
-- **Workflow patterns** - How to start work, commit safely, coordinate
-- **Project context** - Detected tech stack, AGENTS.md content
-- **Current tasks** - Output of `br ready`
+The admin agent receives:
+- **Admin role instructions** - Don't code directly, spawn workers instead
+- **NTM commands** - How to spawn and communicate with workers
+- **Task management** - `br` commands for creating/tracking tasks
+- **Project context** - Tech stack, AGENTS.md, current tasks
 
-This lets agents understand the flywheel ecosystem without manual explanation.
+**Critical:** The admin agent should NOT write code directly. It should:
+1. Create tasks with `br create`
+2. Spawn workers with `ntm spawn`
+3. Assign work with `ntm send`
+4. Monitor with `ntm status` and `br list`
+5. Review results with `git diff` and `ubs scan`
 
 ---
 
 ## Daily Workflow
 
 ```bash
-# Morning: Check what's running
-flywheel sessions
+# Morning: Check system health
 flywheel doctor
+flywheel fix                      # Fix any issues
 
-# Start work
+# Start admin session
 cd my-project
-br ready                          # See available tasks
-flywheel spawn my-project         # Start agents
+flywheel start                    # Get admin context
 
-# Create tasks
+# Create tasks (as admin)
 br create "Add user auth" --type feature
 br create "Fix login bug" --type bug
 
-# Monitor agents
-ntm dashboard my-project
+# Spawn worker agents
+ntm spawn my-project --cc=2       # 2 Claude workers
 
-# Before committing
+# Assign work to workers
+ntm send my-project --pane=1 "Check br ready, claim auth task, implement it"
+ntm send my-project --pane=2 "Check br ready, claim bug task, fix it"
+
+# Monitor progress
+ntm status my-project             # Worker status
+br list                           # Task status
+
+# Review worker output
+git diff                          # See changes
 ubs scan .                        # Scan for bugs
-cm context "what I worked on"     # Update memory
 
 # End of day
 flywheel clean                    # Kill stale sessions

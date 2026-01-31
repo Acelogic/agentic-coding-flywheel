@@ -8,18 +8,60 @@ A practical guide for leveraging the Dicklesworthstone multi-agent workflow to m
 
 ---
 
+## The Admin/Worker Model
+
+⚠️ **Critical Concept:** There are two types of agents in this workflow:
+
+### Admin Agent (Orchestrator)
+- Runs `flywheel` commands
+- Creates tasks with `br`
+- Spawns workers with `ntm spawn`
+- Assigns work with `ntm send`
+- Monitors progress
+- Reviews results
+- **Does NOT write code directly**
+
+### Worker Agents (Implementers)
+- Spawned by the admin via `ntm spawn`
+- Receive instructions via `ntm send`
+- Do the actual coding work
+- Use MCP Agent Mail for file coordination
+- Update task status with `br update`
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      ADMIN AGENT                            │
+│      (flywheel start, br create, ntm spawn/send)            │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+    ┌─────────┐    ┌─────────┐    ┌─────────┐
+    │ Worker  │    │ Worker  │    │ Worker  │
+    │ (codes) │    │ (codes) │    │ (codes) │
+    └─────────┘    └─────────┘    └─────────┘
+```
+
+**Why this matters:**
+- Admin maintains high-level oversight
+- Workers can run in parallel without stepping on each other
+- MCP Agent Mail handles file locking between workers
+- Clear separation of orchestration vs implementation
+
+---
+
 ## Philosophy
 
 The NTM workflow is built on three principles:
 
-1. **Parallel Exploration** - Multiple agents explore different solution paths simultaneously
+1. **Parallel Execution** - Multiple worker agents implement different parts simultaneously
 2. **Specialization** - Each agent type has strengths; use them strategically
-3. **Coordination** - Agents communicate through shared context, not direct messages
+3. **Coordination** - Workers coordinate through MCP Agent Mail, admin coordinates through NTM
 
 ```
 Traditional: You → Agent → Result → You → Agent → Result → ...
 
-NTM Style:   You → [Agent₁, Agent₂, Agent₃] → [Result₁, Result₂, Result₃] → Best Path
+NTM Style:   Admin → [Worker₁, Worker₂, Worker₃] → [Result₁, Result₂, Result₃] → Merged Result
 ```
 
 ---
@@ -51,6 +93,38 @@ ntm spawn docs --cc=1 --gmi=1 --cod=1
 ---
 
 ## Core Workflows
+
+### Workflow 0: Admin Agent Setup (Start Here)
+
+Before spawning workers, the admin agent should:
+
+```bash
+# 1. Get admin context
+flywheel start                    # Outputs admin agent instructions
+
+# 2. Check/create tasks
+br ready                          # See existing tasks
+br create "Task description" --type feature
+
+# 3. Spawn workers
+ntm spawn myproject --cc=2        # 2 Claude workers
+
+# 4. Assign work (DO NOT code yourself!)
+ntm send myproject --pane=1 "Read ARCHITECTURE.md, run br ready, claim a task, implement it"
+ntm send myproject --pane=2 "Read ARCHITECTURE.md, run br ready, claim a task, implement it"
+
+# 5. Monitor
+ntm status myproject              # Check worker status
+br list                           # Check task status
+
+# 6. Review when workers finish
+git diff                          # See what workers produced
+ubs scan .                        # Check for bugs
+```
+
+**Remember:** As admin, you orchestrate. Workers implement.
+
+---
 
 ### Workflow 1: Parallel Exploration
 
@@ -253,23 +327,38 @@ ntm send proj --cc "Run br ready to see available tasks. Claim one with br updat
 bv  # Opens TUI
 ```
 
-### With MCP Agent Mail
+### With MCP Agent Mail (Critical for Multi-Agent)
 
-Agents can coordinate through mail when they need to:
-- Reserve files (prevent conflicts)
-- Send structured messages to each other
-- Track work handoffs
+MCP Agent Mail is essential for worker coordination. It prevents file conflicts when multiple workers edit the same codebase.
 
+**The admin agent should ensure it's running:**
 ```bash
-# Ensure server is running
-am
-
-# Agents auto-discover the MCP server
-# They can use tools like:
-# - file_reservation_paths (lock files)
-# - send_message (notify other agents)
-# - fetch_inbox (check for messages)
+flywheel doctor                   # Shows MCP Agent Mail status
+flywheel fix                      # Fixes issues including starting the server
 ```
+
+**Workers automatically use MCP Agent Mail for:**
+- **File reservations** - Lock files before editing, prevent conflicts
+- **Messaging** - Send updates to other workers
+- **Handoffs** - Coordinate sequential work
+
+**Key MCP tools workers use:**
+```
+file_reservation_paths     # Reserve files before editing
+release_file_reservations  # Release when done
+send_message              # Notify other agents
+fetch_inbox               # Check for messages
+```
+
+**Worker coordination pattern:**
+```
+Worker 1: "I'm editing src/auth.ts" → reserves file
+Worker 2: "I need auth.ts" → sees reservation, waits or works on something else
+Worker 1: "Done with auth.ts" → releases file
+Worker 2: "auth.ts available" → can now edit
+```
+
+This happens automatically through the MCP tools. Workers just need to use the reservation tools before editing shared files.
 
 ### With CASS (Session Search)
 

@@ -152,11 +152,68 @@ run_doctor() {
     echo ""
 
     echo -e "${BOLD}Services:${NC}"
-    if curl -s http://127.0.0.1:8765/health &>/dev/null; then
-        echo -e "  ${GREEN}✓${NC} MCP Agent Mail (running)"
-    else
-        echo -e "  ${YELLOW}○${NC} MCP Agent Mail (start with: am)"
+    local mail_dir="$HOME/Developer/mcp_agent_mail"
+    local mail_db="$mail_dir/storage.sqlite3"
+    local mail_wal="$mail_dir/storage.sqlite3-wal"
+    local mail_shm="$mail_dir/storage.sqlite3-shm"
+    local mail_status="unknown"
+    local mail_issue=""
+
+    # Step 1: Check for orphaned WAL/SHM files (main db deleted but residuals remain)
+    if [[ ! -f "$mail_db" ]] && { [[ -f "$mail_wal" ]] || [[ -f "$mail_shm" ]]; }; then
+        mail_status="orphaned"
+        mail_issue="Orphaned WAL/SHM files without main database"
     fi
+
+    # Step 2: Check if server process is running and database is accessible
+    if [[ "$mail_status" == "unknown" ]]; then
+        local mail_pid=$(pgrep -f "mcp_agent_mail" 2>/dev/null | head -1)
+
+        if [[ -n "$mail_pid" ]]; then
+            # Process is running, check database health
+            if [[ -f "$mail_db" ]]; then
+                if sqlite3 "$mail_db" "SELECT 1 FROM sqlite_master LIMIT 1;" &>/dev/null; then
+                    mail_status="healthy"
+                else
+                    mail_status="corrupted"
+                    mail_issue="Database file is corrupted"
+                fi
+            else
+                # Process running, no database yet - that's fine (fresh state)
+                mail_status="healthy"
+            fi
+        else
+            # No process running
+            if [[ -d "$mail_dir" ]]; then
+                mail_status="not_running"
+            else
+                mail_status="not_installed"
+                mail_issue="MCP Agent Mail not installed"
+            fi
+        fi
+    fi
+
+    # Display status
+    case "$mail_status" in
+        healthy)
+            echo -e "  ${GREEN}✓${NC} MCP Agent Mail (running)"
+            ;;
+        not_running)
+            echo -e "  ${YELLOW}○${NC} MCP Agent Mail (not running)"
+            echo -e "      Start with: ${CYAN}cd $mail_dir && uv run python -m mcp_agent_mail.cli serve-http &${NC}"
+            ;;
+        not_installed)
+            echo -e "  ${YELLOW}○${NC} MCP Agent Mail (not installed)"
+            ;;
+        orphaned)
+            echo -e "  ${RED}✗${NC} MCP Agent Mail ($mail_issue)"
+            echo -e "      Fix with: ${CYAN}flywheel fix${NC}"
+            ;;
+        corrupted)
+            echo -e "  ${RED}✗${NC} MCP Agent Mail ($mail_issue)"
+            echo -e "      Fix with: ${CYAN}flywheel fix${NC}"
+            ;;
+    esac
     echo ""
 
     # Determine shell config file
@@ -635,9 +692,88 @@ EOF
     echo ""
 }
 
+fix_mail_server() {
+    # Helper function to fix MCP Agent Mail issues
+    local mail_dir="$HOME/Developer/mcp_agent_mail"
+    local mail_db="$mail_dir/storage.sqlite3"
+    local mail_wal="$mail_dir/storage.sqlite3-wal"
+    local mail_shm="$mail_dir/storage.sqlite3-shm"
+    local mail_fixed=0
+
+    # Check if mail_dir exists
+    if [[ ! -d "$mail_dir" ]]; then
+        return 0  # Not installed, nothing to fix
+    fi
+
+    local issues_found=false
+    local needs_restart=false
+
+    # Check for orphaned WAL/SHM files
+    if [[ ! -f "$mail_db" ]] && { [[ -f "$mail_wal" ]] || [[ -f "$mail_shm" ]]; }; then
+        issues_found=true
+    fi
+
+    # Check for corrupted database
+    if [[ -f "$mail_db" ]]; then
+        if ! sqlite3 "$mail_db" "SELECT 1 FROM sqlite_master LIMIT 1;" &>/dev/null; then
+            issues_found=true
+        fi
+    fi
+
+    # Check for running processes
+    local mail_pids=$(pgrep -f "mcp_agent_mail" 2>/dev/null)
+    if [[ -z "$mail_pids" ]]; then
+        needs_restart=true
+    fi
+
+    if [[ "$issues_found" == false ]] && [[ "$needs_restart" == false ]]; then
+        return 0  # No issues
+    fi
+
+    echo -e "${BOLD}MCP Agent Mail:${NC}"
+
+    # Kill any existing processes if there are issues
+    if [[ -n "$mail_pids" ]] && [[ "$issues_found" == true ]]; then
+        for pid in $mail_pids; do
+            kill "$pid" 2>/dev/null && echo -e "  ${GREEN}✓${NC} Killed stale process (PID $pid)"
+            mail_fixed=$((mail_fixed + 1))
+        done
+        sleep 2
+        mail_pids=""  # Clear so we restart
+    fi
+
+    # Clean up database files if corrupted or orphaned
+    if [[ "$issues_found" == true ]]; then
+        rm -f "$mail_db" "$mail_wal" "$mail_shm" 2>/dev/null
+        echo -e "  ${GREEN}✓${NC} Cleaned up corrupted/orphaned database files"
+        mail_fixed=$((mail_fixed + 1))
+    fi
+
+    # Start server if not running
+    if [[ -z "$mail_pids" ]] || [[ "$issues_found" == true ]]; then
+        cd "$mail_dir" || return $mail_fixed
+        nohup uv run python -m mcp_agent_mail.cli serve-http &>/dev/null &
+        sleep 3
+        local new_pids=$(pgrep -f "mcp_agent_mail" 2>/dev/null)
+        if [[ -n "$new_pids" ]]; then
+            echo -e "  ${GREEN}✓${NC} Started server (PIDs: $new_pids)"
+            mail_fixed=$((mail_fixed + 1))
+        else
+            echo -e "  ${RED}✗${NC} Failed to start server"
+        fi
+    fi
+
+    if [[ $mail_fixed -gt 0 ]]; then
+        echo -e "  ${YELLOW}Note:${NC} Restart Claude Code to re-establish MCP connection"
+    fi
+    echo ""
+
+    return $mail_fixed
+}
+
 run_fix() {
     print_header
-    echo -e "${BOLD}Auto-fixing issues...${NC}"
+    echo -e "${BOLD}Auto-fixing all issues...${NC}"
     echo ""
 
     local rc="$HOME/.zshrc"
@@ -646,46 +782,67 @@ run_fix() {
 
     local fixed=0
 
-    # Fix PATH
+    # === PATH fixes ===
+    echo -e "${BOLD}PATH Configuration:${NC}"
+    local path_fixed=0
     if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rc"
         echo -e "  ${GREEN}✓${NC} Added ~/.local/bin to PATH"
-        fixed=$((fixed + 1))
+        path_fixed=$((path_fixed + 1))
     fi
     if ! echo "$PATH" | grep -q "$HOME/go/bin"; then
         echo 'export PATH="$HOME/go/bin:$PATH"' >> "$rc"
         echo -e "  ${GREEN}✓${NC} Added ~/go/bin to PATH"
-        fixed=$((fixed + 1))
+        path_fixed=$((path_fixed + 1))
     fi
     if ! echo "$PATH" | grep -q "$HOME/.cargo/bin"; then
         echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$rc"
         echo -e "  ${GREEN}✓${NC} Added ~/.cargo/bin to PATH"
-        fixed=$((fixed + 1))
+        path_fixed=$((path_fixed + 1))
     fi
+    if [[ $path_fixed -eq 0 ]]; then
+        echo -e "  ${GREEN}✓${NC} All paths configured correctly"
+    fi
+    fixed=$((fixed + path_fixed))
+    echo ""
 
-    # Fix shell integrations
+    # === Shell integration fixes ===
+    echo -e "${BOLD}Shell Integration:${NC}"
+    local shell_fixed=0
     if has ntm && ! grep -q 'ntm shell' "$rc" 2>/dev/null; then
         echo "eval \"\$(ntm shell $shell_name)\"" >> "$rc"
         echo -e "  ${GREEN}✓${NC} Added NTM shell integration"
-        fixed=$((fixed + 1))
+        shell_fixed=$((shell_fixed + 1))
     fi
     if has zoxide && ! grep -q 'zoxide init' "$rc" 2>/dev/null; then
         echo "eval \"\$(zoxide init $shell_name)\"" >> "$rc"
         echo -e "  ${GREEN}✓${NC} Added zoxide integration"
-        fixed=$((fixed + 1))
+        shell_fixed=$((shell_fixed + 1))
     fi
     if has atuin && ! grep -q 'atuin init' "$rc" 2>/dev/null; then
         echo "eval \"\$(atuin init $shell_name)\"" >> "$rc"
         echo -e "  ${GREEN}✓${NC} Added atuin integration"
-        fixed=$((fixed + 1))
+        shell_fixed=$((shell_fixed + 1))
     fi
-
+    if [[ $shell_fixed -eq 0 ]]; then
+        echo -e "  ${GREEN}✓${NC} All shell integrations configured"
+    fi
+    fixed=$((fixed + shell_fixed))
     echo ""
+
+    # === MCP Agent Mail fixes ===
+    fix_mail_server
+    fixed=$((fixed + $?))
+
+    # === Summary ===
+    echo -e "${BOLD}Summary:${NC}"
     if [[ $fixed -gt 0 ]]; then
-        echo -e "${GREEN}Fixed $fixed issue(s).${NC} Run: ${CYAN}source $rc${NC}"
+        echo -e "${GREEN}Fixed $fixed issue(s).${NC}"
+        [[ $path_fixed -gt 0 || $shell_fixed -gt 0 ]] && echo -e "Run: ${CYAN}source $rc${NC} to apply shell changes"
     else
-        echo -e "${GREEN}No issues to fix!${NC}"
+        echo -e "${GREEN}No issues to fix - everything looks good!${NC}"
     fi
+    echo ""
 }
 
 run_upgrade() {
@@ -900,6 +1057,37 @@ run_start() {
     local flywheel_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local guide_path="$flywheel_dir/NTM_WORKFLOW_GUIDE.md"
 
+    # Run quick health check first (stderr so it doesn't pollute the context output)
+    local health_issues=0
+
+    # Check MCP Agent Mail
+    local mail_dir="$HOME/Developer/mcp_agent_mail"
+    local mail_db="$mail_dir/storage.sqlite3"
+    local mail_wal="$mail_dir/storage.sqlite3-wal"
+    local mail_shm="$mail_dir/storage.sqlite3-shm"
+
+    if [[ -d "$mail_dir" ]]; then
+        # Check for orphaned files
+        if [[ ! -f "$mail_db" ]] && { [[ -f "$mail_wal" ]] || [[ -f "$mail_shm" ]]; }; then
+            echo "⚠️  MCP Agent Mail has orphaned database files. Run: flywheel fix" >&2
+            health_issues=$((health_issues + 1))
+        elif [[ -f "$mail_db" ]] && ! sqlite3 "$mail_db" "SELECT 1 FROM sqlite_master LIMIT 1;" &>/dev/null; then
+            echo "⚠️  MCP Agent Mail database is corrupted. Run: flywheel fix" >&2
+            health_issues=$((health_issues + 1))
+        elif ! pgrep -f "mcp_agent_mail" &>/dev/null; then
+            echo "⚠️  MCP Agent Mail not running. Starting..." >&2
+            cd "$mail_dir" && nohup uv run python -m mcp_agent_mail.cli serve-http &>/dev/null &
+            sleep 2
+        fi
+    fi
+
+    # Check task tracking
+    if [[ ! -d ".beads" ]]; then
+        echo "⚠️  Task tracking not initialized. Run: br init" >&2
+    fi
+
+    [[ $health_issues -gt 0 ]] && echo "" >&2
+
     # Detect project info
     local tech_stack=""
     [[ -f "package.json" ]] && tech_stack="Node.js/JavaScript"
@@ -919,72 +1107,89 @@ run_start() {
 
     # Output context for agent injection
     cat << 'WORKFLOW_HEADER'
-# Agentic Coding Flywheel - Project Context
+# Agentic Coding Flywheel - Admin Agent Context
 
-You are now working within the **Agentic Coding Flywheel** workflow. This context gives you the tools and patterns to work effectively.
+⚠️ **CRITICAL: You are the ADMIN AGENT**
+
+You are the orchestrator/coordinator. **DO NOT write code or make changes directly.**
+
+Your role is to:
+1. **Spawn worker agents** using NTM to do the actual work
+2. **Create and manage tasks** using `br`
+3. **Monitor progress** and coordinate between workers
+4. **Review results** from worker agents
+
+The actual coding work should be done by worker agents you spawn via NTM.
 
 ---
 
-## Quick Reference - Key Commands
+## Your Admin Commands
 
 ```bash
-# Task Management (br = beads_rust)
-br ready                    # See tasks you can work on
+# Task Management (create tasks for workers)
+br ready                    # See available tasks
 br list                     # List all tasks
 br create "desc" --type T   # Create task (T: feature|bug|task|refactor)
 br update ID --status S     # Update status (S: todo|in_progress|done)
 
-# Memory & Context (cm = cass_memory)
-cm context "what you're doing" --json   # Get relevant memory/patterns
+# Spawn Worker Agents (THIS IS HOW WORK GETS DONE)
+ntm spawn PROJECT --cc=N    # Spawn N Claude worker agents
+ntm send PROJECT --cc "msg" # Send instructions to workers
+ntm send PROJECT --pane=N "msg"  # Send to specific worker
+ntm status PROJECT          # Check worker status
+ntm dashboard PROJECT       # Monitor all workers (needs TTY)
 
-# Session Search (cass)
-cass search "query"         # Find past solutions
+# Memory & Context (share with workers)
+cm context "task" --json    # Get relevant memory/patterns
 
-# Safety
-ubs scan .                  # Scan for bugs before committing
-dcg                         # Auto-blocks dangerous commands (always active)
-
-# Multi-Agent (ntm)
-ntm spawn NAME --cc=N       # Spawn N Claude agents
-ntm send NAME --cc "msg"    # Send to all Claude agents
-ntm dashboard NAME          # Monitor agents
-
-# MCP Agent Mail (coordination)
-am                          # Start mail server (if not running)
-# Agents auto-discover MCP tools for file reservations & messaging
+# Coordination
+# Workers auto-discover MCP Agent Mail for file reservations
 ```
 
 ---
 
-## Workflow Patterns
+## Admin Workflow
 
-### Pattern 1: Starting Work
+### Step 1: Setup Tasks
 ```bash
-br ready                              # Check available tasks
-cm context "task description" --json  # Get memory context
-# Then start implementing
+br ready                    # Check existing tasks
+br create "Task 1" --type feature
+br create "Task 2" --type feature
 ```
 
-### Pattern 2: Before Committing
+### Step 2: Spawn Workers
 ```bash
-ubs scan .                  # Check for bugs
-git diff                    # Review changes
-# Commit if clean
+ntm spawn myproject --cc=2  # Spawn 2 Claude workers
 ```
 
-### Pattern 3: Parallel Agents (when needed)
+### Step 3: Assign Work to Workers
 ```bash
-ntm spawn project --cc=2    # Spawn 2 Claude agents
-ntm send project --cc:0 "Work on backend"
-ntm send project --cc:1 "Work on frontend"
-ntm dashboard project       # Monitor
+ntm send myproject --pane=1 "Read ARCHITECTURE.md, check br ready, claim task bd-xxx and implement it"
+ntm send myproject --pane=2 "Read ARCHITECTURE.md, check br ready, claim task bd-yyy and implement it"
 ```
 
-### Pattern 4: File Coordination (multi-agent)
-When multiple agents work on the same codebase, use MCP Agent Mail to prevent conflicts:
-- Reserve files before editing with `file_reservation_paths`
-- Release when done with `release_file_reservations`
-- Check inbox for messages from other agents
+### Step 4: Monitor & Coordinate
+```bash
+ntm status myproject        # Check progress
+br list                     # See task status updates
+```
+
+### Step 5: Review Results
+```bash
+# Check what workers produced
+git status
+git diff
+ubs scan .                  # Scan for bugs before committing
+```
+
+---
+
+## Why This Matters
+
+- **You (admin)** = orchestration, planning, task management
+- **Workers (via NTM)** = actual coding, file changes, implementation
+- Workers use MCP Agent Mail to coordinate file access
+- This prevents conflicts and enables parallel work
 
 ---
 
@@ -1039,21 +1244,21 @@ WORKFLOW_HEADER
     cat << 'WORKFLOW_FOOTER'
 ---
 
-## Your Next Steps
+## Your Next Steps (As Admin Agent)
 
-1. **Check tasks:** Run `br ready` to see what needs work
-2. **Get context:** Run `cm context "your task" --json` for relevant memory
-3. **Implement:** Make changes following project conventions
-4. **Verify:** Run `ubs scan .` before committing
-5. **Update task:** Run `br update ID --status done` when complete
+1. **Check/create tasks:** Run `br ready` and `br create` to set up work
+2. **Spawn workers:** Run `ntm spawn PROJECT --cc=N` to create worker agents
+3. **Assign tasks:** Run `ntm send PROJECT --pane=N "instructions"` to assign work
+4. **Monitor:** Run `ntm status PROJECT` to check progress
+5. **Review:** When workers finish, review with `git diff` and `ubs scan .`
 
-**Important:**
-- Always check `br ready` before starting new work
-- Use `cm context` to leverage past solutions
-- Run `ubs scan` before any commit
-- Update task status as you progress
+**⚠️ Remember: You are the ADMIN - do NOT code directly!**
 
-You're ready to proceed. What would you like to work on?
+- Spawn worker agents with `ntm spawn` for all implementation work
+- Workers will use MCP Agent Mail to coordinate file access
+- Your job is orchestration: create tasks, spawn workers, monitor, review
+
+Ready to orchestrate. What tasks should we set up for the workers?
 WORKFLOW_FOOTER
 }
 
@@ -1136,7 +1341,7 @@ case "${1:-$default_cmd}" in
         echo -e "${BOLD}${BLUE}━━━ Setup ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "  ${GREEN}install${NC}      Install all 33 ACFS tools"
         echo -e "  ${GREEN}doctor${NC}       Health check: tools, PATH, auth, versions"
-        echo -e "  ${GREEN}fix${NC}          Auto-fix PATH and shell integration issues"
+        echo -e "  ${GREEN}fix${NC}          Auto-fix all issues (PATH, shell, services)"
         echo -e "  ${GREEN}update${NC}       Update all installed tools"
         echo -e "  ${GREEN}upgrade${NC}      Update flywheel itself (git pull)"
         echo -e "  ${GREEN}uninstall${NC}    Remove everything and clean up"
